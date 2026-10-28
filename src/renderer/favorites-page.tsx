@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { TrackTable } from './components';
+import { TrackTable, formatDuration } from './components';
 import { mergeFavoritesPage } from './favorites-pagination.mjs';
 import type { LibraryContext } from './pages';
 import type { Track } from '../shared/types';
@@ -159,6 +159,32 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
     setPicked(new Set());
   }
 
+  /**
+   * Exports exactly what is on screen right now — the filtered/sorted view — because that is what
+   * the user is looking at when they press the button. Album/artist names are joined with " / " so a
+   * multi-artist track stays one CSV row.
+   */
+  async function exportList() {
+    if (!visible.length) return;
+    const rows = visible.map(track => [
+      track.title,
+      track.artists.map(artist => artist.name).join(' / '),
+      track.album?.title ?? '',
+      formatDuration(track.durationSeconds),
+      track.durationSeconds ?? '',
+    ] as (string | number)[]);
+    const stamp = new Date().toLocaleDateString('zh-CN').replaceAll('/', '-');
+    const result = await window.desktop.export.list({
+      suggestedName: `我的收藏 ${stamp}`,
+      headers: ['曲名', '艺人', '专辑', '时长', '时长（秒）'],
+      rows,
+    }).catch(() => null);
+    if (!result) { ctxRef.current.notice('导出失败，请重试。'); return; }
+    if (!result.ok) { ctxRef.current.notice(result.error.message); return; }
+    if (result.data.canceled) { ctxRef.current.notice('已取消导出。'); return; }
+    ctxRef.current.notice(`已导出 ${rows.length} 首到 ${result.data.path}`);
+  }
+
   function enqueuePicked() {
     for (const track of pickedTracks) ctxRef.current.enqueue(track);
     ctxRef.current.notice(`已把 ${pickedTracks.length} 首加入队列。`);
@@ -177,6 +203,7 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
           {filling ? `正在准备 ${data.current.tracks.length} 首…` : '播放全部'}
         </button>}
         {filling && <button className="ghost" onClick={() => { fillingRef.current = false; setFilling(false); }}>取消准备</button>}
+        {tracks.length > 0 && <button className="ghost" disabled={loading} onClick={() => void exportList()}>导出清单</button>}
         <button className="ghost" disabled={loading || filling} onClick={() => void load(true)}>刷新收藏</button>
       </div>
     </div>

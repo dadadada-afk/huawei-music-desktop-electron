@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { channels } from '../shared/channels';
-import type { AuxWindowKind, DesktopApi, LyricsAppearance, PlayerCommand, PlayerSnapshot } from '../shared/types';
+import type { AuxWindowKind, DesktopApi, ExportRequest, LyricsAppearance, PlayerCommand, PlayerSnapshot } from '../shared/types';
 
 const api: DesktopApi = {
   auth: {
@@ -32,6 +32,13 @@ const api: DesktopApi = {
     createPlaylist: input => ipcRenderer.invoke(channels.musicCreatePlaylist, input),
     updatePlaylistDescription: input => ipcRenderer.invoke(channels.musicUpdatePlaylistDescription, input),
     deletePlaylist: input => ipcRenderer.invoke(channels.musicDeletePlaylist, input),
+  },
+  export: {
+    list: (input: ExportRequest) => ipcRenderer.invoke(channels.exportList, input),
+  },
+  share: {
+    cover: (input: { url: string }) => ipcRenderer.invoke(channels.shareCover, input),
+    save: (input: { dataUrl: string; suggestedName: string }) => ipcRenderer.invoke(channels.shareSave, input),
   },
   settings: {
     get: () => ipcRenderer.invoke(channels.settingsGet),

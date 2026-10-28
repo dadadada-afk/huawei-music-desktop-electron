@@ -28,6 +28,12 @@ export const channels = {
   lyricsCacheInfo: 'lyrics:cache-info',
   lyricsClearCache: 'lyrics:clear-cache',
   queueLoad: 'queue:load',
+  // Writes a user-chosen CSV next to wherever they point the save dialog.
+  exportList: 'export:list',
+  // Share card needs the cover as data, and a cross-origin <img> taints the canvas, so the main
+  // process fetches it first (it is not bound by CORS) and hands back a data URL.
+  shareCover: 'share:cover',
+  shareSave: 'share:save',
   queueSave: 'queue:save',
   windowMinimize: 'window:minimize',
   windowSetCloseBehavior: 'window:set-close-behavior',

@@ -1,4 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, net } from 'electron';
+import { writeFile } from 'node:fs/promises';
+import { safeFileName, toCsv } from './csv.mjs';
+import { isSafeResourceUrl } from '../safe-media-url.mjs';
 import { titleBarColors } from './titlebar.mjs';
 import { channels } from '../shared/channels';
 import { AuthManager, isAllowedSender } from './auth-manager';
@@ -38,6 +41,66 @@ export function registerIpc(
   const idOf = (value: unknown) => (typeof value === 'string' && value.trim() && value.length <= 200 ? value.trim() : null);
   for (const channel of Object.values(channels)) ipcMain.removeHandler(channel);
   ipcMain.handle(channels.authStatus, async event => { guard(event); return auth.status(); });
+  // The renderer never names a path: the dialog picks it, so a compromised renderer cannot choose
+  // where to write. Rows are capped because a 200k-row CSV would freeze the dialog's preview.
+  // Covers live on the same allow-listed CDN as audio. Fetching here instead of in the renderer is
+  // what keeps the share card's canvas drawable: a cross-origin <img> would taint it.
+  ipcMain.handle(channels.shareCover, async (event, input: { url?: unknown } = {}) => {
+    guard(event);
+    const url = typeof input.url === 'string' ? input.url : '';
+    if (!isSafeResourceUrl(url)) return fail({ kind: 'invalid', message: '封面地址不在允许范围内。', retryable: false });
+    try {
+      const response = await net.fetch(url);
+      if (!response.ok) return fail({ kind: 'network', message: '封面下载失败。', retryable: true });
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length > 8 * 1024 * 1024) return fail({ kind: 'invalid', message: '封面文件过大。', retryable: false });
+      const type = response.headers.get('content-type') ?? 'image/jpeg';
+      if (!type.startsWith('image/')) return fail({ kind: 'invalid', message: '封面不是图片。', retryable: false });
+      return ok({ dataUrl: `data:${type};base64,${buffer.toString('base64')}` });
+    } catch {
+      return fail({ kind: 'network', message: '封面下载失败。', retryable: true });
+    }
+  });
+  ipcMain.handle(channels.shareSave, async (event, input: { dataUrl?: unknown; suggestedName?: unknown } = {}) => {
+    guard(event);
+    const dataUrl = typeof input.dataUrl === 'string' ? input.dataUrl : '';
+    if (!dataUrl.startsWith('data:image/png;base64,') || dataUrl.length > 24 * 1024 * 1024) {
+      return fail({ kind: 'invalid', message: '分享图数据无效或过大。', retryable: false });
+    }
+    const name = typeof input.suggestedName === 'string' ? input.suggestedName : '分享图';
+    const picked = await dialog.showSaveDialog(window, {
+      title: '保存分享图',
+      defaultPath: `${safeFileName(name, '分享图')}.png`,
+      filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+    });
+    if (picked.canceled || !picked.filePath) return ok({ canceled: true });
+    try {
+      await writeFile(picked.filePath, Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64'));
+      return ok({ canceled: false, path: picked.filePath });
+    } catch {
+      return fail({ kind: 'permission', message: '保存图片失败，请换个位置再试。', retryable: true });
+    }
+  });
+  ipcMain.handle(channels.exportList, async (event, input: { suggestedName?: unknown; headers?: unknown; rows?: unknown } = {}) => {
+    guard(event);
+    const headers = Array.isArray(input.headers) ? input.headers.filter((cell): cell is string => typeof cell === 'string') : [];
+    const rows = Array.isArray(input.rows) ? input.rows.filter(Array.isArray) : [];
+    if (!headers.length) return fail({ kind: 'invalid', message: '导出内容为空。', retryable: false });
+    if (rows.length > 20000) return fail({ kind: 'invalid', message: '一次最多导出 2 万行，请先筛选。', retryable: false });
+    const name = typeof input.suggestedName === 'string' ? input.suggestedName : '播放清单';
+    const picked = await dialog.showSaveDialog(window, {
+      title: '导出清单',
+      defaultPath: `${safeFileName(name, '播放清单')}.csv`,
+      filters: [{ name: 'CSV 表格', extensions: ['csv'] }],
+    });
+    if (picked.canceled || !picked.filePath) return ok({ canceled: true });
+    try {
+      await writeFile(picked.filePath, toCsv(headers, rows), 'utf8');
+      return ok({ canceled: false, path: picked.filePath });
+    } catch {
+      return fail({ kind: 'permission', message: '写入文件失败，请换个位置再试。', retryable: true });
+    }
+  });
   ipcMain.handle(channels.authLogin, async event => { guard(event); return auth.login(); });
   ipcMain.handle(channels.authLogout, async event => { guard(event); return auth.logout(); });
   ipcMain.handle(channels.authCancelLogin, async event => { guard(event); return auth.cancelLogin(); });

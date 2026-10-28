@@ -47,7 +47,7 @@ async function installHandlers(instance, urls) {
   // inside the evaluated function is not supported by this harness.
   await instance.evaluate(({ ipcMain }, { urls: mediaUrls }) => {
     const tracks = [
-      { id: 'smoke-mp3', title: 'Smoke MP3', artists: [{ id: 'artist-1', name: 'Local fixture' }], album: { id: 'album-1', title: 'Fixture Album' }, durationSeconds: 4, available: true },
+      { id: 'smoke-mp3', title: 'Smoke MP3', artists: [{ id: 'artist-1', name: 'Local fixture' }], album: { id: 'album-1', title: 'Fixture Album' }, durationSeconds: 4, available: true, coverUrl: 'https://fixture.dbankcdn.cn/cover.png' },
       { id: 'smoke-flac', title: 'Smoke FLAC', artists: [{ name: 'Local fixture' }], durationSeconds: 4, available: true },
     ];
     const ok = data => ({ ok: true, data });
@@ -129,7 +129,7 @@ try {
     nodeProcess: typeof process,
     genericInvoke: typeof window.desktop?.invoke,
   }));
-  assert.deepEqual(boundary.apiKeys, ['app', 'auth', 'fonts', 'lyrics', 'music', 'onNotice', 'player', 'queue', 'settings', 'window']);
+  assert.deepEqual(boundary.apiKeys, ['app', 'auth', 'export', 'fonts', 'lyrics', 'music', 'onNotice', 'player', 'queue', 'settings', 'share', 'window']);
   assert.deepEqual(boundary.musicKeys, ['album', 'artist', 'createPlaylist', 'deletePlaylist', 'discover', 'favoriteState', 'favorites', 'favoritesSummary', 'history', 'lyrics',
     'playlistDetail', 'playlists', 'reportPlayback', 'resolvePlayback', 'search', 'setFavorite', 'updatePlaylistDescription']);
   assert.equal(boundary.nodeProcess, 'undefined');
@@ -207,6 +207,17 @@ try {
   assert.match(await page.getByRole('region', { name: '批量操作' }).textContent(), /已选 2 首/);
   await page.getByRole('button', { name: '清除选择' }).click();
   await page.waitForFunction(() => !document.querySelector('.bulk-bar'));
+  // Export: the save dialog is stubbed in the main process so the test never blocks on native UI.
+  const exportTarget = join(profile, 'export-check.csv');
+  await app.evaluate(({ dialog }, target) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
+  }, exportTarget);
+  await page.getByRole('button', { name: '导出清单' }).click();
+  await page.waitForFunction(() => /已导出/.test(document.querySelector('.notice')?.textContent ?? ''), null, { timeout: 10_000 });
+  const exported = await readFile(exportTarget, 'utf8');
+  assert.ok(exported.startsWith('﻿曲名,艺人,专辑,时长,时长（秒）'), `unexpected header: ${exported.slice(0, 60)}`);
+  assert.match(exported, /Smoke MP3/);
+  assert.match(exported, /0:04/);
   // Anchor to the row's own accessible name; a bare /Smoke MP3/ also matches the favorite button.
   const mp3Row = page.getByRole('button', { name: /^Smoke MP3/ });
   await mp3Row.waitFor({ timeout: 15_000 });
@@ -263,6 +274,24 @@ try {
   assert.equal(await page.locator('.side-panel[aria-label="歌词"]').count(), 0, 'opening the queue should close the lyrics panel');
   await page.getByRole('button', { name: '关闭' }).click();
 
+  // Share card: the cover is fetched inside the main process (stubbed offline here) because a
+  // cross-origin <img> would taint the canvas; drawing and PNG encoding still run for real.
+  const sharePng = join(profile, 'share-card.png');
+  await app.evaluate(({ dialog, net }, args) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: args.path });
+    const bytes = Buffer.from(args.png, 'base64');
+    net.fetch = async () => new Response(bytes, { headers: { 'content-type': 'image/png' } });
+  }, { path: sharePng, png: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' });
+  await page.getByRole('button', { name: '打开播放详情页' }).click();
+  await page.locator('.lyrics-stage').waitFor({ timeout: 5000 });
+  await page.getByRole('button', { name: '保存歌词分享图' }).click();
+  await page.locator('.stage-tools button', { hasText: '已保存' }).waitFor({ timeout: 10_000 });
+  const card = await readFile(sharePng);
+  assert.equal(card.subarray(1, 4).toString('latin1'), 'PNG', 'share card must be a PNG');
+  assert.equal(card.readUInt32BE(16), 1080, 'share card width');
+  assert.equal(card.readUInt32BE(20), 1440, 'share card height');
+  await page.getByRole('button', { name: '退出歌词页' }).click();
+
   // Repeat mode cycles through the three documented states.
   await page.getByRole('button', { name: '顺序播放' }).click();
   await page.getByRole('button', { name: '列表循环' }).waitFor({ timeout: 3000 });
@@ -315,7 +344,13 @@ try {
   await page.getByText(/本地导入 1 首/).waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: '清除本地导入' }).click();
   await page.getByText(/本地导入 0 首/).waitFor({ timeout: 5000 });
-  await page.getByRole('combobox', { name: '关闭或最小化窗口时行为' }).selectOption('tray');
+  // Re-selecting the current option fires no change event, so move away first when already on tray.
+  const behavior = page.getByRole('combobox', { name: '关闭或最小化窗口时行为' });
+  if (await behavior.inputValue() === 'tray') {
+    await behavior.selectOption('quit');
+    await page.getByText('关闭窗口时将退出程序。').waitFor({ timeout: 5000 });
+  }
+  await behavior.selectOption('tray');
   await page.getByText('关闭窗口时将最小化到托盘。').waitFor({ timeout: 5000 });
   // `app.getPath('userData')` is the isolated profile passed via --user-data-dir, so the store can
   // be read straight from the test process (Playwright's main-process evaluate cannot import modules).

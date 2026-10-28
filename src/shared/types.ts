@@ -175,6 +175,13 @@ export type PlayerSnapshot = {
   lyricIndex: number;
 };
 
+/** One row of an exported list; every cell is already human-readable. */
+export type ExportRequest = {
+  suggestedName: string;
+  headers: string[];
+  rows: (string | number)[][];
+};
+
 export type DesktopApi = {
   auth: {
     status(): Promise<Result<AuthStatus>>;
@@ -207,6 +214,16 @@ export type DesktopApi = {
     createPlaylist(input: { name: string; trackIds: string[] }): Promise<Result<{ id?: string }>>;
     updatePlaylistDescription(input: { id: string; description: string }): Promise<Result<{ id: string }>>;
     deletePlaylist(input: { id: string }): Promise<Result<{ id: string }>>;
+  };
+  export: {
+    /** Opens a save dialog and writes the CSV; `canceled` means the user closed the dialog. */
+    list(input: ExportRequest): Promise<Result<{ canceled: boolean; path?: string }>>;
+  };
+  share: {
+    /** Fetches an allow-listed cover through the main process so the canvas stays untainted. */
+    cover(input: { url: string }): Promise<Result<{ dataUrl: string }>>;
+    /** Writes a rendered PNG (base64, no data: prefix) to a user-chosen path. */
+    save(input: { dataUrl: string; suggestedName: string }): Promise<Result<{ canceled: boolean; path?: string }>>;
   };
   settings: {
     get(): Promise<Result<AppSettings>>;

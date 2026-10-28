@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Captions, ChevronUp, Gauge, Heart, Headphones, ListMusic, ListOrdered, Minimize2, Moon, MoreHorizontal,
+  Captions, ChevronUp, Gauge, Heart, Headphones, ImageDown, ListMusic, ListOrdered, Minimize2, Moon, MoreHorizontal,
   Music2, Pause, PictureInPicture2, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { activeLyricIndex } from '../lyrics.mjs';
+import { loadImage, renderShareCard, type ShareLine } from './share-card';
 import type { LyricsDoc, Playlist, Track } from '../shared/types';
 
 export function formatDuration(seconds?: number): string {
@@ -460,6 +461,67 @@ export function LyricsPanel({ doc, loading, positionSeconds, offsetSeconds, onSe
   </aside>;
 }
 
+/**
+ * Saves a poster of the current song: cover, title and the lyric line being sung.
+ * The cover is fetched through IPC because a cross-origin <img> would taint the canvas.
+ */
+function ShareCardButton({ track, doc, positionSeconds, offsetSeconds }: {
+  track?: Track | null;
+  doc: LyricsDoc | null;
+  positionSeconds: number;
+  offsetSeconds: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const activeIndex = useActiveLyric(doc, positionSeconds, offsetSeconds);
+  useEffect(() => {
+    if (!done) return;
+    const timer = window.setTimeout(() => setDone(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [done]);
+
+  async function share() {
+    if (!track || busy) return;
+    setBusy(true);
+    try {
+      let cover: HTMLImageElement | undefined;
+      if (track.coverUrl) {
+        const fetched = await window.desktop.share.cover({ url: track.coverUrl }).catch(() => null);
+        if (fetched?.ok) cover = await loadImage(fetched.data.dataUrl).catch(() => undefined);
+      }
+      const lines = doc?.lines ?? [];
+      const at = (index: number): ShareLine | null => {
+        const line = lines[index];
+        return line ? { text: line.text || '', current: index === activeIndex } : null;
+      };
+      const picked = activeIndex < 0
+        ? lines.slice(0, 3).map((line, index) => ({ text: line.text || '', current: index === 0 }))
+        : [at(activeIndex - 1), at(activeIndex), at(activeIndex + 1)].filter((line): line is ShareLine => !!line);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c8202e';
+      const canvas = renderShareCard({
+        title: track.title,
+        artists: track.artists.map(artist => artist.name).join(' / ') || '未知艺人',
+        lines: picked.length ? picked : [{ text: '', current: true }],
+        accent,
+        dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
+      }, cover);
+      const saved = await window.desktop.share.save({
+        dataUrl: canvas.toDataURL('image/png'),
+        suggestedName: `${track.title}-${track.artists.map(artist => artist.name).join('_') || '分享'}`,
+      });
+      if (saved.ok && !saved.data.canceled) setDone(true);
+    } catch {
+      setDone(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <button className="stage-tool" aria-label="保存歌词分享图" onClick={() => void share()} disabled={!track || busy}>
+    <ImageDown size={13} />{busy ? '生成中…' : done ? '已保存' : '分享图'}
+  </button>;
+}
+
 export function LyricsStage({
   track, doc, loading, positionSeconds, offsetSeconds, playing, duration, disabled,
   onSeekTo, onSeekSeconds, onToggle, onPrevious, onNext, onOffset, onImport, onRemoveLocal, onClose,
@@ -558,6 +620,7 @@ export function LyricsStage({
           <span className="offset">{(offsetSeconds > 0 ? '+' : '') + offsetSeconds.toFixed(1)}s</span>
           <button aria-label="歌词延后" onClick={() => onOffset(0.5)} disabled={!doc?.synced}>+</button>
         </div>
+        <ShareCardButton track={track} doc={doc} positionSeconds={positionSeconds} offsetSeconds={offsetSeconds} />
       </div>
     </footer>
   </section>;
