@@ -130,6 +130,8 @@ export type AppSettings = {
   lyricsFontSize: number;
   /** Colour of the line being sung, as #rrggbb. Empty means the built-in warm white. */
   lyricsColor: string;
+  /** Most recent search terms, newest first. */
+  searchHistory: string[];
   /**
    * Playback speed. Persisted because a listener who slowed a podcast to 0.75x expects the next
    * launch to still be at 0.75x, not to be silently reset to normal speed.
@@ -154,7 +156,7 @@ export type SavedQueue = {
 };
 
 /** Fire-and-forget playback commands from the tray, the media keys and the mini player. */
-export type PlayerCommand = 'play-pause' | 'next' | 'previous';
+export type PlayerCommand = 'play-pause' | 'next' | 'previous' | 'volume-up' | 'volume-down';
 
 /** The two always-on-top helpers. Neither owns playback; both only mirror the main window. */
 export type AuxWindowKind = 'mini' | 'lyrics';
@@ -242,7 +244,11 @@ export type DesktopApi = {
     cacheInfo(): Promise<Result<LyricsCacheInfo>>;
     clearCache(input?: { local?: boolean }): Promise<Result<LyricsCacheInfo>>;
   };
-  app: { quit(): Promise<void> };
+  app: {
+    quit(): Promise<void>;
+    /** The global chords the main process actually owns; empty entries mean another app took them. */
+    shortcuts(): Promise<Result<{ registered: string[]; failed: string[] }>>;
+  };
   player: {
     onCommand(listener: (command: PlayerCommand) => void): () => void;
     /** Main window only: publish the current snapshot to the auxiliary windows. */

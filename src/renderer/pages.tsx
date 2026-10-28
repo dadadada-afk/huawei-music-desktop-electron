@@ -198,9 +198,20 @@ export function SearchPage({ ctx }: { ctx: LibraryContext }) {
   const [searched, setSearched] = useState(false);
   const nextStart = useRef(0);
   const requestId = useRef(0);
+  const history = ctx.settings?.searchHistory ?? [];
+
+  // Only a submitted query is remembered; typing keystrokes must not fill the list.
+  function remember(term: string) {
+    const trimmed = term.trim();
+    if (!trimmed) return;
+    const next = [trimmed, ...history.filter(entry => entry !== trimmed)].slice(0, 8);
+    if (next.join('|') === history.join('|')) return;
+    void ctx.updateSettings({ searchHistory: next });
+  }
 
   async function run(start: number, append: boolean) {
     if (!query.trim()) return;
+    if (!append) remember(query);
     const id = ++requestId.current;
     ctx.setBusy(true);
     const page = await ctx.run(() => window.desktop.music.search({ query, start, limit: 20 }), '搜索失败，请重试。');
@@ -223,6 +234,15 @@ export function SearchPage({ ctx }: { ctx: LibraryContext }) {
       <input aria-label="搜索歌曲" value={query} maxLength={80} placeholder="搜索歌曲名称或艺人" onChange={event => setQuery(event.target.value)} />
       <button className="primary" type="submit" disabled={ctx.busy || !query.trim()}>搜索</button>
     </form>
+    {!searched && history.length > 0 && <div className="search-history" aria-label="搜索历史">
+      <span className="hint">最近搜索</span>
+      <div className="history-chips">
+        {history.map(term => <button key={term} className="history-chip" onClick={() => { setQuery(term); void run(0, false); }}>
+          {term}
+        </button>)}
+        <button className="text-button" onClick={() => { void ctx.updateSettings({ searchHistory: [] }); }}>清空</button>
+      </div>
+    </div>}
     <TrackTable tracks={tracks} actions={ctx} onLoadMore={() => void run(nextStart.current, true)} hasMore={hasMore} busy={ctx.busy}
       loadMoreLabel="加载更多结果" emptyText={searched ? '没有找到匹配的歌曲。' : '输入关键词后开始搜索。'} />
   </section>;

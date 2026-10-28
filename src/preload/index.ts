@@ -61,7 +61,10 @@ const api: DesktopApi = {
     minimize: () => ipcRenderer.invoke(channels.windowMinimize),
     setCloseBehavior: input => ipcRenderer.invoke(channels.windowSetCloseBehavior, input),
   },
-  app: { quit: () => ipcRenderer.invoke(channels.appQuit) },
+  app: {
+    quit: () => ipcRenderer.invoke(channels.appQuit),
+    shortcuts: () => ipcRenderer.invoke(channels.appShortcuts),
+  },
   player: {
     onCommand: listener => {
       const wrapped = (_event: Electron.IpcRendererEvent, command: PlayerCommand) => listener(command);

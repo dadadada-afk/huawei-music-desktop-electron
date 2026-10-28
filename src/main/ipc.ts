@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { safeFileName, toCsv } from './csv.mjs';
 import { isSafeResourceUrl } from '../safe-media-url.mjs';
 import { titleBarColors } from './titlebar.mjs';
+import { shortcutStatus } from './shortcut-status.mjs';
 import { channels } from '../shared/channels';
 import { AuthManager, isAllowedSender } from './auth-manager';
 import { loadQueue, loadSettings, saveQueue, updateSettings } from './storage';
@@ -301,6 +302,12 @@ export function registerIpc(
   });
   ipcMain.handle(channels.windowMinimize, async event => { guard(event); window.minimize(); });
   ipcMain.handle(channels.appQuit, async event => { guard(event); app.quit(); });
+  // Read-only window onto the chords the main process truly owns: another app can steal an
+  // accelerator, and the renderer is the only place that can tell the user which one died.
+  ipcMain.handle(channels.appShortcuts, async event => {
+    guard(event);
+    return ok({ registered: [...shortcutStatus.registered], failed: [...shortcutStatus.failed] });
+  });
   // The main window publishes; every helper window consumes. Nothing here mutates playback, so a
   // malformed or stale snapshot can only make a mirror look wrong until the next one arrives.
   ipcMain.on(channels.playerBroadcast, (event, input: unknown) => {

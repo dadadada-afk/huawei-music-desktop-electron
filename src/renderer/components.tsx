@@ -626,13 +626,33 @@ export function LyricsStage({
   </section>;
 }
 
-export function QueuePanel({ tracks, currentId, onSelect, onClose }: { tracks: Track[]; currentId: string | null; onSelect(index: number): void; onClose(): void }) {
+export function QueuePanel({ tracks, currentId, onSelect, onReorder, onClose }: {
+  tracks: Track[];
+  currentId: string | null;
+  onSelect(index: number): void;
+  onReorder(from: number, to: number): void;
+  onClose(): void;
+}) {
+  const dragFrom = useRef<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
   return <aside className="side-panel" aria-label="播放队列">
     <div className="panel-head"><strong>播放队列</strong><button className="text-button" onClick={onClose}>关闭</button></div>
     {!tracks.length
       ? <p className="panel-empty">队列为空。</p>
       : <ol className="queue-list">
-        {tracks.map((track, index) => <li key={`${track.id}-${index}`}>
+        {tracks.map((track, index) => <li key={`${track.id}-${index}`} draggable
+          className={`${dragFrom.current === index ? 'dragging' : ''} ${overIndex === index ? 'drop-target' : ''}`}
+          onDragStart={event => { dragFrom.current = index; event.dataTransfer.effectAllowed = 'move'; }}
+          onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverIndex(index); }}
+          onDragLeave={() => setOverIndex(current => (current === index ? null : current))}
+          onDrop={event => {
+            event.preventDefault();
+            const from = dragFrom.current;
+            dragFrom.current = null;
+            setOverIndex(null);
+            if (from !== null && from !== index) onReorder(from, index);
+          }}
+          onDragEnd={() => { dragFrom.current = null; setOverIndex(null); }}>
           <button className={`queue-item ${track.id === currentId ? 'active' : ''}`} onClick={() => onSelect(index)}>
             <span>{track.title}</span><small>{track.artists.map(artist => artist.name).join(' / ') || '未知艺人'}</small>
           </button>

@@ -15,6 +15,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   lyricsLocked: false,
   lyricsFontSize: 30,
   lyricsColor: '#ffe9eb',
+  // Newest first, capped so the store cannot grow without bound.
+  searchHistory: [],
   playbackRate: 1,
   // 'system' follows the OS; the two explicit values pin the app regardless of the desktop.
   theme: 'system',
@@ -93,6 +95,12 @@ export function sanitizeSettings(input, fallback = DEFAULT_SETTINGS) {
   next.lyricsFontSize = clampNumber(raw.lyricsFontSize, 18, 64, base.lyricsFontSize);
   // Only a plain #rrggbb reaches the stylesheet; anything else falls back instead of being injected.
   if (typeof raw.lyricsColor === 'string' && HEX_COLOR.test(raw.lyricsColor)) next.lyricsColor = raw.lyricsColor.toLowerCase();
+  if (Array.isArray(raw.searchHistory)) {
+    next.searchHistory = raw.searchHistory
+      .filter(entry => typeof entry === 'string' && entry.trim().length > 0 && entry.length <= 80)
+      .slice(0, 8)
+      .map(entry => entry.trim());
+  }
   if (typeof raw.volume === 'number' && Number.isFinite(raw.volume)) {
     next.volume = Math.min(1, Math.max(0, raw.volume));
   }

@@ -8,6 +8,7 @@ test('settings keep only known enum values and clamp volume', () => {
     closeBehavior: 'tray', quality: 'lossless', volume: 1, repeatMode: 'one', shuffle: true, syncHistory: false,
     thirdPartyLyrics: true,
     sidebarCollapsed: false, lyricsOpacity: 1, lyricsLocked: false, lyricsFontSize: 30, lyricsColor: '#ffe9eb',
+    searchHistory: [],
     playbackRate: 1, theme: 'system', launchAtLogin: false,
     appearance: DEFAULT_SETTINGS.appearance,
   });

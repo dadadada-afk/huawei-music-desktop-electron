@@ -33,6 +33,7 @@ export const channels = {
   // Share card needs the cover as data, and a cross-origin <img> taints the canvas, so the main
   // process fetches it first (it is not bound by CORS) and hands back a data URL.
   shareCover: 'share:cover',
+  appShortcuts: 'app:shortcuts',
   shareSave: 'share:save',
   queueSave: 'queue:save',
   windowMinimize: 'window:minimize',

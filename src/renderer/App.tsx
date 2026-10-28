@@ -129,7 +129,7 @@ export function App() {
   const [accountVersion, setAccountVersion] = useState(0);
   const [favoriteChange, setFavoriteChange] = useState<LibraryContext['favoriteChange']>(null);
   const favoritePending = useRef(new Set<string>());
-  const playCommand = useRef({ toggle: () => {}, next: () => {}, previous: () => {} });
+  const playCommand = useRef({ toggle: () => {}, next: () => {}, previous: () => {}, volume: (_delta: number) => {} });
   const [localHistory, setLocalHistory] = useState<Track[]>([]);
   const [volume, setVolume] = useState(0.85);
   const [quality, setQuality] = useState<'standard' | 'lossless'>('standard');
@@ -196,7 +196,8 @@ export function App() {
     const unsubscribeCommand = window.desktop.player.onCommand(command => {
       if (command === 'play-pause') playCommand.current.toggle();
       else if (command === 'next') playCommand.current.next();
-      else playCommand.current.previous();
+      else if (command === 'previous') playCommand.current.previous();
+      else playCommand.current.volume(command === 'volume-up' ? 0.05 : -0.05);
     });
     const unsubscribeSeek = window.desktop.player.onSeek(seconds => {      const element = audio.current;
       if (!element || !Number.isFinite(seconds)) return;
@@ -572,6 +573,26 @@ export function App() {
     void playAt(cursorRef.current);
   }
 
+  /**
+   * Moves one queue entry. `order` holds queue indices, so the whole array is remapped through the
+   * same splice instead of being rebuilt — rebuilding would silently reshuffle playback.
+   */
+  function reorderQueue(from: number, to: number) {
+    const current = queueRef.current;
+    if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return;
+    const next = [...current];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    const oldOrder = [...current.keys()];
+    const [movedIndex] = oldOrder.splice(from, 1);
+    oldOrder.splice(to, 0, movedIndex);
+    const oldToNew = new Map(oldOrder.map((oldIndex, newIndex) => [oldIndex, newIndex]));
+    order.current = order.current.map(index => oldToNew.get(index) ?? index);
+    queueRef.current = next;
+    setQueue(next);
+    setCursor(cursorRef.current);
+  }
+
   function togglePlayback() {
     if (!audio.current || !order.current.length) return;
     if (!audio.current.paused) audio.current.pause();
@@ -598,7 +619,13 @@ export function App() {
     void playAt(step.cursor);
   }
 
-  playCommand.current = { toggle: togglePlayback, next: goNext, previous: goPrevious };
+  playCommand.current = {
+    toggle: togglePlayback,
+    next: goNext,
+    previous: goPrevious,
+    // Clamped in one place so a held-down chord cannot push the slider past either end.
+    volume: delta => setVolume(current => Math.min(1, Math.max(0, Math.round((current + delta) * 100) / 100))),
+  };
 
   function previewSeek(value: number) { seeking.current = true; seekTarget.current = value; setPosition(value); }
   function commitSeek() {
@@ -1087,7 +1114,8 @@ export function App() {
       onRemoveLocal={() => void removeLocalLyrics()}
       onClose={() => setLyricsOpen(false)}
     />}
-    {queueOpen && <QueuePanel tracks={queue} currentId={currentTrack?.id ?? null} onSelect={queueIndex => { const at = order.current.indexOf(queueIndex); void playAt(at < 0 ? 0 : at); }} onClose={() => setQueueOpen(false)} />}
+    {queueOpen && <QueuePanel tracks={queue} currentId={currentTrack?.id ?? null} onSelect={queueIndex => { const at = order.current.indexOf(queueIndex); void playAt(at < 0 ? 0 : at); }}
+      onReorder={reorderQueue} onClose={() => setQueueOpen(false)} />}
     {stageOpen && <LyricsStage
       track={currentTrack}
       doc={lyrics}

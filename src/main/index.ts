@@ -7,6 +7,7 @@ import { AuthManager } from './auth-manager';
 import { createAuthManagerLifecycle } from './auth-manager-lifecycle.mjs';
 import { applyNodeProxy, electronBypassRules, proxyConfigurationProblem, proxyRules, readProxySettings } from './proxy.mjs';
 import { titleBarColors } from './titlebar.mjs';
+import { shortcutStatus } from './shortcut-status.mjs';
 import { shouldBlockMediaRequest } from '../safe-media-url.mjs';
 import { loadSettings, updateSettings } from './storage';
 import { loadJson, saveJson } from './json-store.cjs';
@@ -171,7 +172,7 @@ async function createWindow(): Promise<void> {
   }
 }
 
-function sendPlayerCommand(command: 'play-pause' | 'next' | 'previous'): void {
+function sendPlayerCommand(command: PlayerCommand): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('player:command', command);
 }
@@ -338,13 +339,25 @@ function configureApplicationMenu(): void {
 }
 
 function registerMediaKeys(): void {
-  const bindings: [Electron.Accelerator, 'play-pause' | 'next' | 'previous'][] = [
+  // Media keys work from anywhere; the Alt chords exist because many keyboards lack media keys and
+  // because the user asked to skip tracks without switching back to the window.
+  const bindings: [Electron.Accelerator, PlayerCommand][] = [
     ['MediaPlayPause', 'play-pause'],
     ['MediaNextTrack', 'next'],
     ['MediaPreviousTrack', 'previous'],
+    ['CommandOrControl+Alt+P', 'play-pause'],
+    ['CommandOrControl+Alt+Right', 'next'],
+    ['CommandOrControl+Alt+Left', 'previous'],
+    ['CommandOrControl+Alt+Up', 'volume-up'],
+    ['CommandOrControl+Alt+Down', 'volume-down'],
   ];
+  shortcutStatus.registered.length = 0;
+  shortcutStatus.failed.length = 0;
   for (const [accelerator, command] of bindings) {
-    try { globalShortcut.register(accelerator, () => sendPlayerCommand(command)); } catch { /* Unsupported on this platform. */ }
+    try {
+      if (globalShortcut.register(accelerator, () => sendPlayerCommand(command))) shortcutStatus.registered.push(accelerator);
+      else shortcutStatus.failed.push(accelerator);
+    } catch { shortcutStatus.failed.push(accelerator); }
   }
 }
 

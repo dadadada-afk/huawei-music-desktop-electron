@@ -164,18 +164,22 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
    * the user is looking at when they press the button. Album/artist names are joined with " / " so a
    * multi-artist track stays one CSV row.
    */
-  async function exportList() {
-    if (!visible.length) return;
-    const rows = visible.map(track => [
+  function toRows(list: Track[]): (string | number)[][] {
+    return list.map(track => [
       track.title,
       track.artists.map(artist => artist.name).join(' / '),
       track.album?.title ?? '',
       formatDuration(track.durationSeconds),
       track.durationSeconds ?? '',
-    ] as (string | number)[]);
+    ]);
+  }
+
+  async function exportTracks(list: Track[], name: string) {
+    if (!list.length) return;
+    const rows = toRows(list);
     const stamp = new Date().toLocaleDateString('zh-CN').replaceAll('/', '-');
     const result = await window.desktop.export.list({
-      suggestedName: `我的收藏 ${stamp}`,
+      suggestedName: `${name} ${stamp}`,
       headers: ['曲名', '艺人', '专辑', '时长', '时长（秒）'],
       rows,
     }).catch(() => null);
@@ -184,6 +188,11 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
     if (result.data.canceled) { ctxRef.current.notice('已取消导出。'); return; }
     ctxRef.current.notice(`已导出 ${rows.length} 首到 ${result.data.path}`);
   }
+
+  async function exportList() { await exportTracks(visible, '我的收藏'); }
+
+  /** Exports only the ticked tracks, so a hand-picked set never has to be filtered down first. */
+  async function exportPicked() { await exportTracks(pickedTracks, '我的收藏选中'); }
 
   function enqueuePicked() {
     for (const track of pickedTracks) ctxRef.current.enqueue(track);
@@ -223,6 +232,7 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
     {picked.size > 0 && <div className="bulk-bar" role="region" aria-label="批量操作">
       <span>已选 {picked.size} 首</span>
       <button className="ghost" onClick={enqueuePicked}>加入队列</button>
+      <button className="ghost" onClick={() => void exportPicked()}>导出所选</button>
       <button className="ghost danger" onClick={() => void removePicked()}>取消收藏</button>
       <button className="text-button" onClick={() => setPicked(new Set())}>清除选择</button>
     </div>}

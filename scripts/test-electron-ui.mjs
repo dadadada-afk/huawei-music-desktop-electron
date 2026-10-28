@@ -274,6 +274,15 @@ try {
   assert.equal(await page.locator('.side-panel[aria-label="歌词"]').count(), 0, 'opening the queue should close the lyrics panel');
   await page.getByRole('button', { name: '关闭' }).click();
 
+  // Global chords live in the main process; this asserts the real registry, not the source list,
+  // so a stolen accelerator fails the gate instead of silently doing nothing for the user.
+  const chords = await page.evaluate(() => window.desktop.app.shortcuts());
+  assert.equal(chords.ok, true);
+  // A headless CI session owns no desktop, so the OS refuses every registration; what matters
+  // here is that the main process attempted all eight and published the verdict.
+  assert.equal(chords.data.registered.length + chords.data.failed.length, 8, `got ${JSON.stringify(chords.data)}`);
+  assert.ok([...chords.data.registered, ...chords.data.failed].every(item => typeof item === 'string'));
+
   // Share card: the cover is fetched inside the main process (stubbed offline here) because a
   // cross-origin <img> would taint the canvas; drawing and PNG encoding still run for real.
   const sharePng = join(profile, 'share-card.png');
