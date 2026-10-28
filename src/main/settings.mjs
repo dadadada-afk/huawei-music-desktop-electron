@@ -16,6 +16,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   lyricsFontSize: 30,
   lyricsColor: '#ffe9eb',
   playbackRate: 1,
+  // 'system' follows the OS; the two explicit values pin the app regardless of the desktop.
+  theme: 'system',
+  launchAtLogin: false,
   appearance: Object.freeze({
     accent: 'red',
     panelOpacity: 1,
@@ -36,6 +39,7 @@ const REPEAT_MODES = new Set(['off', 'all', 'one']);
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
 const ACCENTS = new Set(['red', 'blue', 'green', 'amber', 'violet', 'custom']);
 const FONT_CHOICES = new Set(['sans', 'serif', 'mono', 'custom']);
+const THEMES = new Set(['system', 'light', 'dark']);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 function clampNumber(value, min, max, fallback) {
@@ -93,6 +97,8 @@ export function sanitizeSettings(input, fallback = DEFAULT_SETTINGS) {
     next.volume = Math.min(1, Math.max(0, raw.volume));
   }
   if (typeof raw.playbackRate === 'number' && PLAYBACK_RATES.includes(raw.playbackRate)) next.playbackRate = raw.playbackRate;
+  if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin;
+  if (THEMES.has(raw.theme)) next.theme = /** @type {'system' | 'light' | 'dark'} */ (raw.theme);
   if (raw.appearance && typeof raw.appearance === 'object') {
     next.appearance = sanitizeAppearance(raw.appearance, base.appearance);
   }

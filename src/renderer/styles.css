@@ -16,6 +16,23 @@
   --panel: rgba(255, 255, 255, calc(0.66 * var(--panel-alpha)));
   --panel-solid: #ffffff;
   --panel-soft: rgba(255, 255, 255, calc(0.44 * var(--panel-alpha)));
+  /* Opaque surface for inputs, menus and popovers that sit on top of the glass panels. */
+  --surface: #ffffff;
+  /* Translucent surfaces that sit directly on the page: search pill, hint strips, toasts. */
+  --surface-soft: rgba(255, 255, 255, 0.88);
+  --panel-raised: rgba(255, 255, 255, calc(0.82 * var(--panel-alpha)));
+  --panel-pop: rgba(252, 252, 250, calc(0.97 * var(--panel-alpha)));
+  /* Glass edge highlight. In dark mode this must dim, or every panel gets a white halo. */
+  --panel-edge: rgba(255, 255, 255, 0.9);
+  --panel-edge-soft: rgba(255, 255, 255, 0.6);
+  --titlebar-bg: rgba(246, 245, 242, 0.94);
+  /* Cover-art placeholder shown while a track has no artwork. */
+  --cover-a: #d9d7d2;
+  --cover-b: #b9b6b0;
+  /* Ambient wash behind the window. */
+  --glow-1: rgba(200, 32, 46, 0.10);
+  --glow-2: rgba(88, 120, 190, 0.10);
+  --glow-3: rgba(215, 180, 120, 0.14);
 
   --ink: #16181c;
   --ink-2: #5c6169;
@@ -66,6 +83,54 @@
   font-feature-settings: 'liga' 1, 'kern' 1;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  color-scheme: light;
+}
+
+/* Dark theme. The app's 主题 setting drives nativeTheme.themeSource, which flips
+   prefers-color-scheme for every renderer window; nothing here needs JS to switch. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --bg-0: #14151a;
+    --panel: rgba(30, 32, 39, calc(0.72 * var(--panel-alpha)));
+    --panel-solid: #1e2027;
+    --panel-soft: rgba(30, 32, 39, calc(0.52 * var(--panel-alpha)));
+    --surface: #24262e;
+    --surface-soft: rgba(255, 255, 255, 0.06);
+    --panel-raised: rgba(30, 32, 39, calc(0.84 * var(--panel-alpha)));
+    --panel-pop: rgba(32, 34, 42, calc(0.97 * var(--panel-alpha)));
+    --panel-edge: rgba(255, 255, 255, 0.09);
+    --panel-edge-soft: rgba(255, 255, 255, 0.07);
+    --titlebar-bg: rgba(20, 21, 26, 0.94);
+    --cover-a: #2c2f38;
+    --cover-b: #3b3f4a;
+
+    --ink: #eceef3;
+    --ink-2: #a7acb7;
+    --ink-3: #767c88;
+    --ink-4: #555a66;
+
+    --accent: #e04553;
+    --accent-deep: #c8202e;
+    --accent-light: #f26876;
+    --accent-soft: rgba(224, 69, 83, 0.16);
+    --accent-line: rgba(224, 69, 83, 0.38);
+    --accent-shadow: rgba(224, 69, 83, 0.32);
+
+    --line: rgba(255, 255, 255, 0.1);
+    --line-strong: rgba(255, 255, 255, 0.18);
+    --hover: rgba(255, 255, 255, 0.06);
+    --hover-2: rgba(255, 255, 255, 0.1);
+
+    --glow-1: rgba(200, 32, 46, 0.18);
+    --glow-2: rgba(88, 120, 190, 0.14);
+    --glow-3: rgba(215, 180, 120, 0.06);
+
+    --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 40px rgba(0, 0, 0, 0.45);
+    --shadow-dock: 0 6px 18px rgba(0, 0, 0, 0.42), 0 18px 48px rgba(0, 0, 0, 0.5);
+    --shadow-pop: 0 18px 60px rgba(0, 0, 0, 0.6);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -82,9 +147,9 @@ body {
   min-height: 640px;
   color: var(--ink);
   background:
-    radial-gradient(120% 80% at 6% -10%, rgba(200, 32, 46, 0.10) 0%, transparent 46%),
-    radial-gradient(90% 70% at 96% 4%, rgba(88, 120, 190, 0.10) 0%, transparent 48%),
-    radial-gradient(90% 90% at 60% 110%, rgba(215, 180, 120, 0.14) 0%, transparent 55%),
+    radial-gradient(120% 80% at 6% -10%, var(--glow-1) 0%, transparent 46%),
+    radial-gradient(90% 70% at 96% 4%, var(--glow-2) 0%, transparent 48%),
+    radial-gradient(90% 90% at 60% 110%, var(--glow-3) 0%, transparent 55%),
     var(--bg-0);
   background-attachment: fixed;
   overflow: hidden;
@@ -144,7 +209,7 @@ select:focus-visible,
   padding: 22px 14px 14px;
   border-radius: var(--radius-xl);
   background: var(--panel);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--panel-edge-soft);
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(22px) saturate(1.2);
   overflow: auto;
@@ -380,7 +445,7 @@ select:focus-visible,
   padding: 0 30px 26px;
   border-radius: var(--radius-xl);
   background: var(--panel-soft);
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--panel-edge-soft);
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(22px) saturate(1.2);
   overflow: auto;
@@ -401,7 +466,7 @@ select:focus-visible,
   padding: 26px 30px 16px;
   /* Near-opaque: at 0.74 the scrolled page showed through as a band of blurred text under the
      title, which read as broken layout rather than as glass. */
-  background: rgba(246, 245, 242, 0.94);
+  background: var(--titlebar-bg);
   backdrop-filter: blur(12px) saturate(1.04);
   box-shadow: 0 1px 0 rgba(22, 24, 28, 0.04);
 }
@@ -454,11 +519,11 @@ select:focus-visible,
 .primary.large { padding: 12px 22px; font-size: var(--fs-md); margin-top: 4px; }
 
 .ghost {
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--surface-soft);
   color: var(--ink-2);
   border: 1px solid var(--line);
 }
-.ghost:hover:not(:disabled) { background: #fff; border-color: var(--line-strong); color: var(--ink); }
+.ghost:hover:not(:disabled) { background: var(--surface); border-color: var(--line-strong); color: var(--ink); }
 .ghost:disabled { opacity: 0.5; }
 .ghost.danger { color: var(--accent-deep); border-color: rgba(200, 32, 46, 0.22); }
 .ghost.danger:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent-line); }
@@ -521,8 +586,8 @@ select:focus-visible,
 .library {
   padding: 18px 20px 20px;
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  background: var(--panel-soft);
+  border: 1px solid var(--panel-edge-soft);
   box-shadow: 0 1px 2px rgba(16, 18, 22, 0.03);
 }
 .library + .library { margin-top: 12px; }
@@ -781,7 +846,7 @@ select:focus-visible,
   place-items: center;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.85);
-  background: linear-gradient(150deg, #d9d7d2, #b9b6b0);
+  background: linear-gradient(150deg, var(--cover-a), var(--cover-b));
   box-shadow: 0 1px 2px rgba(16, 18, 22, 0.08), 0 10px 24px rgba(16, 18, 22, 0.1);
 }
 .playlist-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -848,7 +913,7 @@ select:focus-visible,
   place-items: center;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.85);
-  background: linear-gradient(150deg, #d9d7d2, #b9b6b0);
+  background: linear-gradient(150deg, var(--cover-a), var(--cover-b));
   box-shadow: 0 1px 2px rgba(16, 18, 22, 0.08), 0 8px 20px rgba(16, 18, 22, 0.1);
 }
 .artist-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -873,7 +938,7 @@ select:focus-visible,
   margin-bottom: 14px;
   padding: 4px 6px 4px 16px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--surface-soft);
   border: 1px solid var(--line);
   color: var(--ink-3);
   transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
@@ -901,7 +966,7 @@ select:focus-visible,
   margin-bottom: 12px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--surface-soft);
   border: 1px solid var(--line);
   font-size: var(--fs-sm);
   color: var(--ink-2);
@@ -913,7 +978,7 @@ select:focus-visible,
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   font-size: var(--fs-sm);
 }
@@ -965,7 +1030,7 @@ select:focus-visible,
   padding: 7px 30px 7px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
-  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2361666d' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 11px center;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2361666d' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 11px center;
   font-size: var(--fs-sm);
   cursor: pointer;
 }
@@ -1155,7 +1220,7 @@ select:focus-visible,
   padding: 8px 11px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   font-size: var(--fs-sm);
 }
@@ -1170,7 +1235,7 @@ select:focus-visible,
   padding: 6px;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-soft);
 }
 .font-list button {
   /* The list is a column flex box with a max-height, so without this every row shrinks to its bare
@@ -1204,7 +1269,7 @@ select:focus-visible,
   margin-bottom: 22px;
   border-radius: 22px;
   color: var(--accent);
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6));
+  background: linear-gradient(150deg, var(--surface), var(--surface-soft));
   box-shadow: 0 10px 30px rgba(16, 18, 22, 0.1);
 }
 .empty-state h2 {
@@ -1231,8 +1296,8 @@ select:focus-visible,
   flex-direction: column;
   padding: 20px 20px 16px;
   border-radius: var(--radius-lg);
-  background: rgba(252, 252, 250, calc(0.97 * var(--panel-alpha)));
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: var(--panel-pop);
+  border: 1px solid var(--panel-edge);
   box-shadow: var(--shadow-pop);
   backdrop-filter: blur(26px) saturate(1.25);
   overflow: hidden;
@@ -1558,8 +1623,8 @@ select:focus-visible,
   gap: 18px;
   padding: 12px 18px;
   border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, calc(0.82 * var(--panel-alpha)));
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: var(--panel-raised);
+  border: 1px solid var(--panel-edge);
   box-shadow: var(--shadow-dock);
   backdrop-filter: blur(26px) saturate(1.3);
 }
@@ -1636,7 +1701,7 @@ button.cover:hover { transform: translateY(-1px); }
   padding: 4px 9px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface-soft);
   color: var(--ink-2);
   font-size: var(--fs-2xs);
   font-weight: 650;
@@ -1829,3 +1894,70 @@ input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
 .section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .section-title-row .section-title { margin: 0; }
 .ghost.small { padding: 5px 12px; font-size: var(--fs-sm); }
+
+/* ========================================================================== */
+/* List toolbar: filter + sort on long collections                            */
+/* ========================================================================== */
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  flex-wrap: wrap;
+}
+.list-filter {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+}
+.list-filter::placeholder { color: var(--ink-3); }
+.list-filter:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.list-toolbar select {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+}
+
+/* Bulk action bar: appears only while a selection exists, so it never competes with the header. */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+.bulk-bar > span { font-weight: 600; }
+.bulk-bar .ghost { padding: 4px 10px; font-size: var(--fs-xs); }
+
+/*
+ * The checkbox is taken out of the grid flow on purpose. Some pages (收藏) hide .track-art, so the
+ * visible children would never line up with a widened template; absolute positioning keeps every
+ * existing column exactly where it was and only steals padding on the left.
+ */
+.has-selection .track-row { padding-left: 34px; }
+.track-check {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}

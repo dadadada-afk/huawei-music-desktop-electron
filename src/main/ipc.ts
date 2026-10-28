@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
+import { titleBarColors } from './titlebar.mjs';
 import { channels } from '../shared/channels';
 import { AuthManager, isAllowedSender } from './auth-manager';
 import { loadQueue, loadSettings, saveQueue, updateSettings } from './storage';
@@ -173,7 +174,15 @@ export function registerIpc(
   ipcMain.handle(channels.settingsGet, async event => { guard(event); return ok(await loadSettings()); });
   ipcMain.handle(channels.settingsUpdate, async (event, input: unknown) => {
     guard(event);
-    return ok(await updateSettings(input));
+    const next = await updateSettings(input);
+    // Same fan-out as closeBehavior below: the store only persists, the shell applies the effect.
+    nativeTheme.themeSource = next.theme;
+    if (!window.isDestroyed() && process.platform === 'win32') {
+      const palette = titleBarColors(next.theme, nativeTheme.shouldUseDarkColors);
+      window.setTitleBarOverlay({ color: palette.background, symbolColor: palette.symbol, height: 34 });
+    }
+    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: next.launchAtLogin, args: ['--hidden'] });
+    return ok(next);
   });
   ipcMain.handle(channels.fontsList, async event => { guard(event); return ok({ families: await listSystemFonts() }); });
   ipcMain.handle(channels.lyricsCacheInfo, async event => { guard(event); return ok(await lyricsCacheInfo()); });

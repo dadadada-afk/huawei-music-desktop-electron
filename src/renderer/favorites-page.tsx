@@ -6,6 +6,25 @@ import type { Track } from '../shared/types';
 
 const PAGE = 50;
 
+type SortBy = 'default' | 'title' | 'artist' | 'duration';
+
+// Filtering and sorting run on the pages already loaded, never on the server: 收藏 has no search
+// endpoint, so pretending to search the whole library would be a lie. The hint says so.
+function shape(list: Track[], query: string, sortBy: SortBy): Track[] {
+  const needle = query.trim().toLowerCase();
+  const matched = needle
+    ? list.filter(track => track.title.toLowerCase().includes(needle)
+      || track.artists.some(artist => artist.name.toLowerCase().includes(needle))
+      || (track.album?.title ?? '').toLowerCase().includes(needle))
+    : list;
+  if (sortBy === 'default') return matched;
+  const sorted = [...matched];
+  if (sortBy === 'title') sorted.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
+  else if (sortBy === 'artist') sorted.sort((a, b) => (a.artists[0]?.name ?? '').localeCompare(b.artists[0]?.name ?? '', 'zh-CN'));
+  else sorted.sort((a, b) => (a.durationSeconds ?? 0) - (b.durationSeconds ?? 0));
+  return sorted;
+}
+
 // Kept mounted for the current account: navigation must not reset pagination or scroll position.
 export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: boolean }) {
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -18,6 +37,9 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
   const [error, setError] = useState('');
   const [cacheHint, setCacheHint] = useState('');
   const [filling, setFilling] = useState(false);
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<SortBy>('default');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const sentinel = useRef<HTMLDivElement | null>(null);
   const container = useRef<HTMLElement | null>(null);
   const ctxRef = useRef(ctx);
@@ -127,6 +149,22 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
     } finally { fillingRef.current = false; if (mounted.current) setFilling(false); }
   }
 
+  const visible = shape(tracks, query, sortBy);
+  const pickedTracks = tracks.filter(track => picked.has(track.id));
+
+  async function removePicked() {
+    const targets = pickedTracks;
+    if (!targets.length) return;
+    for (const track of targets) ctxRef.current.toggleFavorite(track, false);
+    setPicked(new Set());
+  }
+
+  function enqueuePicked() {
+    for (const track of pickedTracks) ctxRef.current.enqueue(track);
+    ctxRef.current.notice(`已把 ${pickedTracks.length} 首加入队列。`);
+    setPicked(new Set());
+  }
+
   return <section ref={container} className="library favorites-library" aria-label="收藏歌曲" hidden={!active}>
     <div className="library-head">
       <div className="collection-count" aria-live="polite">
@@ -144,7 +182,25 @@ export function FavoritesPage({ ctx, active }: { ctx: LibraryContext; active: bo
     </div>
     {cacheHint && <p className="collection-warning" role="status">{cacheHint}</p>}
     {error && <div className="collection-error" role="alert"><span>{error}</span><button className="ghost" onClick={() => void load(retryAction.current.refresh, retryAction.current.append)}>重试加载收藏</button></div>}
-    <TrackTable tracks={tracks} actions={ctx} emptyText={loaded ? '还没有收藏歌曲，可以搜索后添加收藏。' : loading ? '正在读取收藏…' : '收藏未能读取，请重试。'} />
+    <div className="list-toolbar">
+      <input className="list-filter" aria-label="在收藏中筛选" value={query} maxLength={60}
+        placeholder="在已加载的收藏里筛选歌名 / 歌手 / 专辑" onChange={event => setQuery(event.target.value)} />
+      <select aria-label="排序方式" value={sortBy} onChange={event => setSortBy(event.target.value as SortBy)}>
+        <option value="default">按添加顺序</option>
+        <option value="title">按歌名</option>
+        <option value="artist">按歌手</option>
+        <option value="duration">按时长</option>
+      </select>
+      {query.trim() && <span className="hint">筛出 {visible.length} / 已加载 {tracks.length} 首</span>}
+    </div>
+    {picked.size > 0 && <div className="bulk-bar" role="region" aria-label="批量操作">
+      <span>已选 {picked.size} 首</span>
+      <button className="ghost" onClick={enqueuePicked}>加入队列</button>
+      <button className="ghost danger" onClick={() => void removePicked()}>取消收藏</button>
+      <button className="text-button" onClick={() => setPicked(new Set())}>清除选择</button>
+    </div>}
+    <TrackTable tracks={visible} actions={ctx} selection={{ ids: picked, onChange: setPicked }}
+      emptyText={query.trim() ? '已加载的收藏里没有匹配项。' : loaded ? '还没有收藏歌曲，可以搜索后添加收藏。' : loading ? '正在读取收藏…' : '收藏未能读取，请重试。'} />
     <div ref={sentinel} className="collection-end" aria-live="polite">
       {hasMore ? <>
         <span>{loading ? '正在加载下一批歌曲…' : error ? '加载已暂停' : cacheHint ? '离线缓存，仅显示已有内容' : '继续向下滚动以加载下一批'}</span>

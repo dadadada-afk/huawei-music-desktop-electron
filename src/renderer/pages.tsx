@@ -430,6 +430,7 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
   const fontFamily = shown.fontFamily;
   const customAccent = shown.customAccent;
   const customFont = shown.customFont;
+  const theme = settings?.theme ?? 'system';
   // The overlay appearance is owned by the main process, not by `appearance`, so it is read from
   // settings directly and written through the player channel that applies it to the live window.
   const lyricsOpacity = ctx.settings?.lyricsOpacity ?? 1;
@@ -517,6 +518,12 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
           </select>
         </label>
         <label>
+          <span>开机自动启动</span>
+          <input type="checkbox" aria-label="开机自动启动" checked={settings?.launchAtLogin ?? false}
+            onChange={event => void ctx.updateSettings({ launchAtLogin: event.target.checked })} />
+        </label>
+        <p className="hint">登录 Windows 后自动在托盘里启动，不弹窗口；点托盘图标才打开。安装版才生效，源码运行时这条设置不写入系统启动项。</p>
+        <label>
           <span>同步播放到华为历史</span>
           <input type="checkbox" aria-label="同步播放到华为历史" checked={settings?.syncHistory ?? true}
             onChange={event => void ctx.updateSettings({ syncHistory: event.target.checked })} />
@@ -546,6 +553,20 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
       </div>}
 
       {tab === 'appearance' && <div className="settings-form appearance-form">
+        <div className="appearance-field">
+          <div className="appearance-label">
+            <span>主题</span>
+            <span className="hint">跟随系统，或固定浅色 / 深色</span>
+          </div>
+          <div className="segmented" role="group" aria-label="主题">
+            {([['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']] as const).map(([value, label]) => (
+              <button key={value}
+                className={theme === value ? 'active' : ''}
+                aria-pressed={theme === value}
+                onClick={() => void ctx.updateSettings({ theme: value })}>{label}</button>
+            ))}
+          </div>
+        </div>
         <div className="appearance-field">
           <div className="appearance-label">
             <span>主题色</span>

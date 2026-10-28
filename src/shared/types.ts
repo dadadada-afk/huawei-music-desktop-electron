@@ -135,6 +135,16 @@ export type AppSettings = {
    * launch to still be at 0.75x, not to be silently reset to normal speed.
    */
   playbackRate: number;
+  /**
+   * Colour scheme. 'system' follows the OS setting; 'light' and 'dark' pin the app. Either way the
+   * main process only forwards it to nativeTheme.themeSource — CSS does the actual switching.
+   */
+  theme: 'system' | 'light' | 'dark';
+  /**
+   * Start with Windows. Honoured through app.setLoginItemSettings, which registers the executable
+   * itself; the --hidden argument it passes keeps the launch quiet in the tray.
+   */
+  launchAtLogin: boolean;
 };
 
 export type SavedQueue = {

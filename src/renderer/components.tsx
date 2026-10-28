@@ -35,6 +35,11 @@ export type TrackActions = {
 type TrackTableProps = {
   tracks: Track[];
   actions: TrackActions;
+  /**
+   * Opt-in multi-select. Supplying it draws a checkbox column; the page owns the set so a bulk
+   * action bar can live next to the list instead of inside every row.
+   */
+  selection?: { ids: Set<string>; onChange(next: Set<string>): void };
   onLoadMore?: () => void;
   hasMore?: boolean;
   busy?: boolean;
@@ -57,7 +62,7 @@ function TrackArt({ track, size = 20 }: { track: Track; size?: number }) {
   </span>;
 }
 
-export function TrackTable({ tracks, actions, onLoadMore, hasMore, busy, loadMoreLabel = '加载更多', emptyText }: TrackTableProps) {
+export function TrackTable({ tracks, actions, selection, onLoadMore, hasMore, busy, loadMoreLabel = '加载更多', emptyText }: TrackTableProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ track: Track; index: number; x: number; y: number } | null>(null);
   // A context menu anchored to the cursor would sit off-screen near the right/bottom edge, so it is
@@ -84,7 +89,7 @@ export function TrackTable({ tracks, actions, onLoadMore, hasMore, busy, loadMor
   }, [menu]);
   if (!tracks.length) return <div className="list-empty"><p>{emptyText ?? '这里还没有内容。'}</p></div>;
   return <>
-    <div className="track-list">
+    <div className={`track-list${selection ? ' has-selection' : ''}`}>
       {tracks.map((track, index) => {
         const favorite = actions.favoriteOf(track.id);
         const current = actions.currentTrackId === track.id;
@@ -106,6 +111,18 @@ export function TrackTable({ tracks, actions, onLoadMore, hasMore, busy, loadMor
             if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); actions.play(tracks, index); }
           }}
         >
+          {selection && <input
+            type="checkbox"
+            className="track-check"
+            aria-label={`选择 ${track.title}`}
+            checked={selection.ids.has(track.id)}
+            onClick={event => event.stopPropagation()}
+            onChange={event => {
+              const next = new Set(selection.ids);
+              if (event.target.checked) next.add(track.id); else next.delete(track.id);
+              selection.onChange(next);
+            }}
+          />}
           <span className="track-index">
             <span className="num">{String(index + 1).padStart(2, '0')}</span>
             <button

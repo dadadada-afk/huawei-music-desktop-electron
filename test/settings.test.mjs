@@ -8,7 +8,7 @@ test('settings keep only known enum values and clamp volume', () => {
     closeBehavior: 'tray', quality: 'lossless', volume: 1, repeatMode: 'one', shuffle: true, syncHistory: false,
     thirdPartyLyrics: true,
     sidebarCollapsed: false, lyricsOpacity: 1, lyricsLocked: false, lyricsFontSize: 30, lyricsColor: '#ffe9eb',
-    playbackRate: 1,
+    playbackRate: 1, theme: 'system', launchAtLogin: false,
     appearance: DEFAULT_SETTINGS.appearance,
   });
   assert.deepEqual(sanitizeSettings({ closeBehavior: 'evil', quality: 'hires', volume: -3, repeatMode: 'loop', shuffle: 'yes', syncHistory: 'yes' }), {
@@ -32,6 +32,13 @@ test('settings keep only known enum values and clamp volume', () => {
   assert.equal(sanitizeSettings({ playbackRate: 1.5 }).playbackRate, 1.5);
   assert.equal(sanitizeSettings({ playbackRate: 0.1 }).playbackRate, DEFAULT_SETTINGS.playbackRate);
   assert.equal(sanitizeSettings({ playbackRate: 'fast' }).playbackRate, DEFAULT_SETTINGS.playbackRate);
+  // Theme is a three-way enum; an unknown value falls back to following the OS.
+  assert.equal(sanitizeSettings({ theme: 'dark' }).theme, 'dark');
+  assert.equal(sanitizeSettings({ theme: 'light' }).theme, 'light');
+  assert.equal(sanitizeSettings({ theme: 'midnight' }).theme, DEFAULT_SETTINGS.theme);
+  // A JSON string or number must not silently enable a login item.
+  assert.equal(sanitizeSettings({ launchAtLogin: true }).launchAtLogin, true);
+  assert.equal(sanitizeSettings({ launchAtLogin: 'yes' }).launchAtLogin, DEFAULT_SETTINGS.launchAtLogin);
   assert.equal(sanitizeSettings({ playbackRate: Number.NaN }).playbackRate, DEFAULT_SETTINGS.playbackRate);
 });
 

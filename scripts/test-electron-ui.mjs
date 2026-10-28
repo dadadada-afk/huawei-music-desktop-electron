@@ -183,6 +183,30 @@ try {
   // Favorites page: list, playback with a single Audio element.
   // Navigate explicitly instead of relying on the landing view, which is the discover page.
   await page.getByRole('button', { name: '我的收藏', exact: true }).click();
+  // Filter / sort / multi-select run on the already-loaded page, so they are testable without a server.
+  const filter = page.getByRole('textbox', { name: '在收藏中筛选' });
+  await filter.waitFor({ timeout: 15_000 });
+  assert.equal(await page.locator('.track-row').count(), 2);
+  assert.equal(await page.locator('.track-check').count(), 2, 'a checkbox column must exist on every row');
+  await filter.fill('FLAC');
+  await page.waitForFunction(() => document.querySelectorAll('.track-row').length === 1);
+  assert.equal(await page.locator('.track-row .track-name').textContent(), 'Smoke FLAC');
+  await filter.fill('没有这首');
+  await page.waitForFunction(() => document.querySelector('.list-empty')?.textContent?.includes('没有匹配项'));
+  await filter.fill('');
+  await page.waitForFunction(() => document.querySelectorAll('.track-row').length === 2);
+  // Sorting is stable and observable: by title the FLAC row sorts before the MP3 row.
+  await page.getByRole('combobox', { name: '排序方式' }).selectOption('title');
+  await page.waitForFunction(() => document.querySelector('.track-row .track-name')?.textContent === 'Smoke FLAC');
+  await page.getByRole('combobox', { name: '排序方式' }).selectOption('default');
+  await page.waitForFunction(() => document.querySelector('.track-row .track-name')?.textContent === 'Smoke MP3');
+  // Selecting two rows reveals the bulk bar; clearing it hides the bar again.
+  await page.locator('.track-check').nth(0).check();
+  await page.locator('.track-check').nth(1).check();
+  await page.getByRole('region', { name: '批量操作' }).waitFor({ timeout: 5_000 });
+  assert.match(await page.getByRole('region', { name: '批量操作' }).textContent(), /已选 2 首/);
+  await page.getByRole('button', { name: '清除选择' }).click();
+  await page.waitForFunction(() => !document.querySelector('.bulk-bar'));
   // Anchor to the row's own accessible name; a bare /Smoke MP3/ also matches the favorite button.
   const mp3Row = page.getByRole('button', { name: /^Smoke MP3/ });
   await mp3Row.waitFor({ timeout: 15_000 });

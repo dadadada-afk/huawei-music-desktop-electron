@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, Notification, screen, session, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, nativeTheme, Notification, screen, session, Tray } from 'electron';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -6,6 +6,7 @@ import { registerIpc } from './ipc';
 import { AuthManager } from './auth-manager';
 import { createAuthManagerLifecycle } from './auth-manager-lifecycle.mjs';
 import { applyNodeProxy, electronBypassRules, proxyConfigurationProblem, proxyRules, readProxySettings } from './proxy.mjs';
+import { titleBarColors } from './titlebar.mjs';
 import { shouldBlockMediaRequest } from '../safe-media-url.mjs';
 import { loadSettings, updateSettings } from './storage';
 import { loadJson, saveJson } from './json-store.cjs';
@@ -19,6 +20,10 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 let closeBehavior: AppSettings['closeBehavior'] = 'quit';
+// Mirrors settings.theme so createWindow can paint the title-bar overlay before settings load.
+let activeTheme: AppSettings['theme'] = 'system';
+// Set when Windows launches the app at login; the window is created but stays in the tray.
+const startHidden = process.argv.includes('--hidden');
 // The auxiliary windows own no playback state; they only mirror the last snapshot broadcast by the
 // main window, which keeps the single <audio> element authoritative.
 const auxWindows = new Map<AuxWindowKind, BrowserWindow>();
@@ -65,6 +70,11 @@ if (process.platform === 'win32') app.setAppUserModelId('com.huawei.music.deskto
 const hasSingleInstance = app.requestSingleInstanceLock();
 if (!hasSingleInstance) app.quit();
 
+function overlayColors(): { color: string; symbolColor: string } {
+  const palette = titleBarColors(activeTheme, nativeTheme.shouldUseDarkColors);
+  return { color: palette.background, symbolColor: palette.symbol };
+}
+
 async function createWindow(): Promise<void> {
   // Geometry is restored only when it still overlaps a connected display; otherwise the window is
   // centred by the OS instead of reopening off-screen after a monitor change.
@@ -79,7 +89,7 @@ async function createWindow(): Promise<void> {
     // minimise/maximise/close buttons through the overlay, so the window stays operable.
     titleBarStyle: 'hidden',
     ...(process.platform === 'win32'
-      ? { titleBarOverlay: { color: '#f1f0ed', symbolColor: '#3a3f47', height: 34 } }
+      ? { titleBarOverlay: { ...overlayColors(), height: 34 } }
       : {}),
     // No in-window menu bar on Windows/Linux; the menu is removed below.
     autoHideMenuBar: true,
@@ -153,6 +163,8 @@ async function createWindow(): Promise<void> {
     window.webContents.on('will-navigate', blockUntrustedNavigation);
     window.webContents.on('will-redirect', blockUntrustedNavigation);
     await window.loadFile(join(__dirname, '../renderer/index.html'));
+    // Launched by the login item: come up in the tray instead of stealing focus at boot.
+    if (startHidden && tray) window.hide();
   } catch (error) {
     if (!window.isDestroyed()) window.destroy();
     throw error;
@@ -381,6 +393,15 @@ app.whenReady().then(() => {
   applyNodeProxy(proxy);
   const settingsReady = loadSettings().then(settings => {
     closeBehavior = settings.closeBehavior;
+    activeTheme = settings.theme;
+    // Only a packaged build can register itself: in dev the login item would point at
+    // electron.exe with no app path and open a blank shell on every boot.
+    if (app.isPackaged) {
+      app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin, args: ['--hidden'] });
+    }
+    // themeSource is the single lever for the whole colour scheme: it drives prefers-color-scheme
+    // in every renderer, so styles.css owns the switching and no window needs to be told twice.
+    nativeTheme.themeSource = settings.theme;
     // Restored before any helper window exists, so a reopened overlay starts locked/faded as saved.
     lyricsAppearance.opacity = settings.lyricsOpacity;
     lyricsAppearance.locked = settings.lyricsLocked;
