@@ -19,7 +19,6 @@
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && electron-vite build",
     "test": "node --test test/*.test.mjs",
-    "test:unit": "vitest run",
     "test:electron": "npm run build && node scripts/run-electron-tests.mjs smoke",
     "test:electron-ui": "npm run build && node scripts/run-electron-tests.mjs ui",
     "test:electron-business": "npm run build && node scripts/run-electron-tests.mjs business",
@@ -56,8 +55,7 @@
     "playwright-core": "1.64.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "typescript": "7.0.2",
-    "vitest": "5.0.4"
+    "typescript": "7.0.2"
   },
   "build": {
     "appId": "org.hwmusicdesktop.unofficial.internal",

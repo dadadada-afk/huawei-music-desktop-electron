@@ -33,7 +33,9 @@ const forbiddenSource = /\.(ts|tsx|mjs)$/;
 // `**/<name>/**` and `**/<file>` forms this project actually uses.
 function globToRegExp(glob) {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const body = escaped.replace(/\*\*\//g, '(?:.*/)?').replace(/\/\*\*$/g, '(?:/.*)?');
+  // A leading globstar may match zero or more path segments. The previous `(?:.*/)?`
+  // accidentally consumed `out/` in `out/**/*`, so every compiled bundle looked excluded.
+  const body = escaped.replace(/\*\*\//g, '(?:[^/]+/)*').replace(/\/\*\*$/g, '(?:/.*)?');
   return new RegExp(`^${body}$`);
 }
 
@@ -47,7 +49,8 @@ async function walk(directory, base = directory) {
   for (const item of await readdir(directory, { withFileTypes: true })) {
     const full = join(directory, item.name);
     if (item.isDirectory()) entries.push(...await walk(full, base));
-    else entries.push(relative(base, full));
+    // Normalize once at the filesystem boundary; every release rule is written with `/`.
+    else entries.push(relative(base, full).replaceAll('\\', '/'));
   }
   return entries;
 }
@@ -101,7 +104,8 @@ try {
   await pruneEmptyDirs(join(staging, 'app'));
   const archive = join(staging, 'app.asar');
   await asar.createPackage(join(staging, 'app'), archive);
-  const listed = asar.listPackage(archive).map(entry => entry.replace(/^\//, ''));
+  const listed = asar.listPackage(archive)
+    .map(entry => entry.replace(/^[/\\]+/, '').replaceAll('\\', '/'));
   const archivedLeaks = listed.filter(file => forbiddenInPayload.some(pattern => pattern.test(file)));
   assert.deepEqual(archivedLeaks, [], `app.asar leaked private paths: ${JSON.stringify(archivedLeaks)}`);
   assert.ok(listed.includes('out/main/index.js'), 'app.asar is missing the main bundle');

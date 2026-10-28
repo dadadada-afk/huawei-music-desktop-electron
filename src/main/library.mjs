@@ -101,6 +101,46 @@ export function tracksFromPublicPlaylist(response) {
   return { playlist, tracks: tracksFrom(songs), itemCount: songs.length };
 }
 
+// The same fuzzysearch endpoint answers four content types; only the array key differs, so the
+// discovery page reads all four shapes through one normalizer family.
+export function playlistCardsFrom(response) {
+  const seen = new Set();
+  return list(response?.musicListSimpleInfos).map(playlistFrom).filter(playlist => {
+    if (!playlist || seen.has(playlist.id)) return false;
+    seen.add(playlist.id);
+    return true;
+  });
+}
+
+export function artistCardsFrom(response) {
+  const seen = new Set();
+  return list(response?.artistSimpleInfos).map(entry => {
+    const id = text(entry?.artistCode ?? entry?.artistID ?? entry?.artistId);
+    const name = text(entry?.artistName ?? entry?.name);
+    if (!id || !name || seen.has(id)) return null;
+    seen.add(id);
+    return { id, name, coverUrl: coverFrom(entry), songCount: numeric(entry?.songCount ?? entry?.totalCount) };
+  }).filter(Boolean);
+}
+
+export function albumCardsFrom(response) {
+  const seen = new Set();
+  return list(response?.albumSimpleInfos).map(entry => {
+    const id = text(entry?.albumCode ?? entry?.albumID ?? entry?.albumId);
+    const title = text(entry?.albumName ?? entry?.name);
+    if (!id || !title || seen.has(id)) return null;
+    seen.add(id);
+    return {
+      id,
+      title,
+      coverUrl: coverFrom(entry),
+      artists: artistsFrom(entry),
+      count: numeric(entry?.songCount ?? entry?.totalCount),
+      publishDate: text(entry?.publishDate ?? entry?.releaseDate),
+    };
+  }).filter(Boolean);
+}
+
 export function searchPageFrom(response) {
   const songs = list(response?.songSimpleInfos);
   const total = numeric(response?.totalNum);

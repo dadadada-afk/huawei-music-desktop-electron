@@ -1,6 +1,7 @@
 # Local research captures may contain temporary URLs or session material.
 research/
 .local/
+_tmp/
 .env
 .env.*
 !.env.example

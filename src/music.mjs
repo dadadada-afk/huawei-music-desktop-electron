@@ -1,6 +1,8 @@
 import { MUSIC_ENDPOINT, musicHeaders, ProviderError } from './auth.mjs';
 import { fetch as httpFetch } from 'undici';
 
+const SEARCH_CONTENT_TYPES = new Set(['1', '2', '3', '4']);
+
 const asId = (value, label) => {
   if (typeof value !== 'string' || !value.trim() || value.length > 200) throw new Error(`${label}无效`);
   return value.trim();
@@ -35,10 +37,16 @@ export class MusicClient {
     if(!response.ok || data.result?.resultCode!=='000000')throw new ProviderError(stage,response.status,data);
     return data;
   }
-  search(query,{start=0,limit=20}={}) {
+  // contentType is a fixed enum on this endpoint: 1 songs, 2 albums, 3 artists, 4 public playlists.
+  // Only these four are exposed; anything else returns an empty result instead of an error.
+  searchByType(query, contentType, {start=0,limit=20}={}) {
     if(typeof query!=='string'||!query.trim())throw new Error('搜索词不能为空');
+    if(!SEARCH_CONTENT_TYPES.has(contentType))throw new Error('不支持的搜索类型');
     return this.#request('/music-search-service/v10/service/fuzzysearch',{
-      contentType:'1',correct:'1',queryWord:query.trim().slice(0,80),start:String(start),limit:String(limit)});
+      contentType,correct:'1',queryWord:query.trim().slice(0,80),start:String(start),limit:String(limit)});
+  }
+  search(query,{start=0,limit=20}={}) {
+    return this.searchByType(query,'1',{start,limit});
   }
   publicPlaylist(id,{start=0,limit=20}={}) {
     return this.#request('/music-operation-service/v2/service/musiclist/detail/bymusiclistid',{

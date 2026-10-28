@@ -19,6 +19,10 @@ const suites = {
 const commands = suites[process.argv[2]];
 if (!commands) throw new Error('Unknown Electron test suite.');
 const env = { ...process.env };
+// This machine may opt into Electron's Node compatibility mode globally for tooling. Child Electron
+// processes must never inherit it: Playwright expects the DevTools bootstrap line from a real app,
+// while ELECTRON_RUN_AS_NODE turns electron.exe into a plain Node process and launch just times out.
+delete env.ELECTRON_RUN_AS_NODE;
 let fontDirectory;
 // Host caches can be newer than Electron's fontconfig. A fresh test-only cache keeps Chinese
 // screenshots meaningful; production still uses the desktop's own fonts and configuration.

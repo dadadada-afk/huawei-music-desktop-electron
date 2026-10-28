@@ -9,6 +9,7 @@ export const channels = {
   musicPlaylistDetail: 'music:playlist-detail',
   musicSearch: 'music:search',
   musicHistory: 'music:history',
+  musicDiscover: 'music:discover',
   musicAlbum: 'music:album',
   musicArtist: 'music:artist',
   musicLyrics: 'music:lyrics',
@@ -33,6 +34,22 @@ export const channels = {
   appQuit: 'app:quit',
   appNotice: 'app:notice',
   playerCommand: 'player:command',
+  // Main window -> main process -> every auxiliary window. Fire-and-forget on purpose: a dropped
+  // snapshot is corrected by the next one, so it must never queue behind an invoke round trip.
+  playerBroadcast: 'player:broadcast',
+  playerState: 'player:state',
+  // Auxiliary windows -> main process -> main window, which owns the only <audio> element.
+  playerControl: 'player:control',
+  playerRequestState: 'player:request-state',
+  playerSeek: 'player:seek',
+  windowToggleAux: 'window:toggle-aux',
+  windowAuxState: 'window:aux-state',
+  // Both windows may change the overlay look: the lyrics window itself and the main window (which is
+  // the only way back once the overlay is click-through).
+  windowLyricsAppearance: 'window:lyrics-appearance',
+  windowShowMain: 'window:show-main',
+  // Main process -> lyrics window, so its toolbar never shows a stale lock/opacity state.
+  lyricsAppearanceState: 'lyrics:appearance-state',
 } as const;
 
 export type Channel = (typeof channels)[keyof typeof channels];

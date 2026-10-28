@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { maskAccountId } from '../src/main/account-label.mjs';
 import { DEFAULT_SETTINGS, sanitizeAppearance, sanitizeQueue, sanitizeSettings } from '../src/main/settings.mjs';
 
 test('settings keep only known enum values and clamp volume', () => {
   assert.deepEqual(sanitizeSettings({ closeBehavior: 'tray', quality: 'lossless', volume: 5, repeatMode: 'one', shuffle: true, syncHistory: false }), {
     closeBehavior: 'tray', quality: 'lossless', volume: 1, repeatMode: 'one', shuffle: true, syncHistory: false,
     thirdPartyLyrics: true,
+    sidebarCollapsed: false, lyricsOpacity: 1, lyricsLocked: false, lyricsFontSize: 30, lyricsColor: '#ffe9eb',
+    playbackRate: 1,
     appearance: DEFAULT_SETTINGS.appearance,
   });
   assert.deepEqual(sanitizeSettings({ closeBehavior: 'evil', quality: 'hires', volume: -3, repeatMode: 'loop', shuffle: 'yes', syncHistory: 'yes' }), {
@@ -15,6 +18,28 @@ test('settings keep only known enum values and clamp volume', () => {
   assert.equal(sanitizeSettings({ syncHistory: false }).syncHistory, false);
   assert.deepEqual(sanitizeSettings(null), { ...DEFAULT_SETTINGS });
   assert.deepEqual(sanitizeSettings({ volume: Number.NaN }).volume, DEFAULT_SETTINGS.volume);
+  // The overlay size is user-editable, so it has to be clamped on the way in and back out.
+  assert.equal(sanitizeSettings({ lyricsFontSize: 12 }).lyricsFontSize, 18);
+  assert.equal(sanitizeSettings({ lyricsFontSize: 999 }).lyricsFontSize, 64);
+  assert.equal(sanitizeSettings({ lyricsFontSize: 40 }).lyricsFontSize, 40);
+  assert.equal(sanitizeSettings({ lyricsFontSize: 'big' }).lyricsFontSize, DEFAULT_SETTINGS.lyricsFontSize);
+  // The overlay colour reaches a stylesheet, so only a plain #rrggbb survives sanitizing.
+  assert.equal(sanitizeSettings({ lyricsColor: '#3B82F6' }).lyricsColor, '#3b82f6');
+  assert.equal(sanitizeSettings({ lyricsColor: 'red' }).lyricsColor, DEFAULT_SETTINGS.lyricsColor);
+  assert.equal(sanitizeSettings({ lyricsColor: '#fff' }).lyricsColor, DEFAULT_SETTINGS.lyricsColor);
+  assert.equal(sanitizeSettings({ lyricsColor: 'url(x)' }).lyricsColor, DEFAULT_SETTINGS.lyricsColor);
+  // Playback speed is one of five offered steps; anything else is a corrupt file, not a preference.
+  assert.equal(sanitizeSettings({ playbackRate: 1.5 }).playbackRate, 1.5);
+  assert.equal(sanitizeSettings({ playbackRate: 0.1 }).playbackRate, DEFAULT_SETTINGS.playbackRate);
+  assert.equal(sanitizeSettings({ playbackRate: 'fast' }).playbackRate, DEFAULT_SETTINGS.playbackRate);
+  assert.equal(sanitizeSettings({ playbackRate: Number.NaN }).playbackRate, DEFAULT_SETTINGS.playbackRate);
+});
+
+test('account labels expose only the account id tail', () => {
+  assert.equal(maskAccountId(' 1234567890 '), '****7890');
+  assert.equal(maskAccountId('123'), '****123');
+  assert.equal(maskAccountId('   '), undefined);
+  assert.equal(maskAccountId(null), undefined);
 });
 
 test('queue sanitation drops malformed rows and clamps the index', () => {

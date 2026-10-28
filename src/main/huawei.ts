@@ -7,8 +7,9 @@ import { isSafeMediaUrl } from '../safe-media-url.mjs';
 import { confirmedPlaybackQuality } from './track-quality.mjs';
 import { createDevToolsCallbackObserver, createLoginCallback, prepareLoginPage, waitForLoginPage } from '../login-callback.mjs';
 import {
-  albumFrom, artistFrom, contentTypeOf, historyFrom, playlistsFromLibraryEntries, searchPageFrom,
-  tracksFrom, tracksFromPlaylistDetail, tracksFromPublicPlaylist,
+  albumCardsFrom, albumFrom, artistCardsFrom, artistFrom, contentTypeOf, historyFrom, playlistCardsFrom,
+  playlistsFromLibraryEntries, searchPageFrom, tracksFrom, tracksFromPlaylistDetail,
+  tracksFromPublicPlaylist,
 } from './library.mjs';
 import { parseLyrics } from '../lyrics.mjs';
 import { lyricAddressFrom, inlineLyricsFrom, readBoundedText } from './lyric-resource.mjs';
@@ -347,4 +348,102 @@ export async function resolvePlayback(session: Session, trackId: string, quality
   if (!url || !isSafeMediaUrl(url)) throw new Error('服务端未返回安全的音频地址');
   const actual = confirmedPlaybackQuality(response?.playQuality ?? response?.qualityType, response?.type);
   return { url, actualQuality: actual, contentType: id(response?.type), durationSeconds: number(response?.songInfo?.duration) };
+}
+
+// The recommend endpoint the official client uses (/recommend/querydaily) rejects every body this
+// project could derive: the gateway names the operation and DTO, but the DTO's required values are
+// undocumented and every probed combination returns an empty 400. So the daily list is computed
+// locally instead, from what the account already listens to, and is stable for one local day.
+const DISCOVER_PLAYLIST_KEYWORDS = ['华语流行', '轻音乐', '经典老歌', '民谣'];
+const DAILY_MIX_SIZE = 30;
+const DAILY_ARTIST_SAMPLE = 6;
+
+function localDayKey(now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+// Deterministic per (seed) shuffle: the same account sees the same order all day, and a new order
+// tomorrow. A plain Math.random would reshuffle on every render.
+function seededShuffle<T>(items: T[], seed: string): T[] {
+  let state = 2166136261;
+  for (let i = 0; i < seed.length; i++) state = Math.imul(state ^ seed.charCodeAt(i), 16777619) >>> 0;
+  const random = () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+export type DiscoverPayload = {
+  daily: { tracks: Track[]; day: string; source: 'library' | 'favorites' };
+  playlists: Playlist[];
+  artists: { id: string; name: string; coverUrl?: string; count: number }[];
+};
+
+export async function discover(session: Session, day = localDayKey(), rotation = 0): Promise<DiscoverPayload> {
+  const client = clientFor(session);
+  const favorites = tracksFromFavorites(await client.favorites({ start: 0, limit: DISCOVERY_PAGE_LIMIT }));
+  const known = new Set(favorites.map(track => track.id));
+
+  // Artists the account actually keeps, most frequent first.
+  const tally = new Map<string, { id: string; name: string; coverUrl?: string; count: number }>();
+  for (const track of favorites) {
+    for (const artist of track.artists) {
+      if (!artist.id) continue;
+      const hit = tally.get(artist.id);
+      if (hit) hit.count += 1;
+      else tally.set(artist.id, { id: artist.id, name: artist.name, count: 1 });
+    }
+  }
+  const topArtists = [...tally.values()].sort((a, b) => b.count - a.count);
+
+  const playlistSearch = await Promise.all(
+    DISCOVER_PLAYLIST_KEYWORDS.map(keyword => client.searchByType(keyword, '4', { start: 0, limit: 12 }).catch(() => null)),
+  );
+  const seenPlaylists = new Set<string>();
+  const playlists: Playlist[] = [];
+  for (const response of playlistSearch) {
+    if (!response) continue;
+    for (const playlist of playlistCardsFrom(response) as Playlist[]) {
+      if (seenPlaylists.has(playlist.id) || playlist.kind === 'owned') continue;
+      seenPlaylists.add(playlist.id);
+      playlists.push(playlist);
+    }
+  }
+
+  // Songs by the top artists that are not already in favorites: the actual "something new" part.
+  const sampled = topArtists.slice(0, DAILY_ARTIST_SAMPLE);
+  const artistPages = await Promise.all(sampled.map(entry => client.artist(entry.id).catch(() => null)));
+  const fresh: Track[] = [];
+  for (const [index, response] of artistPages.entries()) {
+    if (!response) continue;
+    const detail = artistFrom(response);
+    const avatar = (detail.artist as { coverUrl?: string }).coverUrl;
+    if (avatar) sampled[index].coverUrl = avatar;
+    for (const track of detail.tracks as Track[]) {
+      if (known.has(track.id)) continue;
+      known.add(track.id);
+      fresh.push(track);
+    }
+  }
+
+  const dailyTracks = seededShuffle(fresh, `${session.snsUserID ?? 'local'}:${day}:${rotation}`).slice(0, DAILY_MIX_SIZE);
+  let source: 'library' | 'favorites' = 'library';
+  if (dailyTracks.length < DAILY_MIX_SIZE) {
+    // Not enough unheard material: top up with the account's own songs so the list is never short.
+    const topUp = seededShuffle(favorites, `${day}:topup:${rotation}`).filter(track => !dailyTracks.some(picked => picked.id === track.id));
+    dailyTracks.push(...topUp.slice(0, DAILY_MIX_SIZE - dailyTracks.length));
+    if (fresh.length === 0) source = 'favorites';
+  }
+
+  return { daily: { tracks: dailyTracks, day, source }, playlists, artists: sampled };
 }

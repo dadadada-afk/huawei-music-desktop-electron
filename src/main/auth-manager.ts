@@ -8,15 +8,17 @@ import { createMemoryCache } from './memory-cache.mjs';
 import { sessionSaveOutcome } from './session-transition.mjs';
 import { createSessionEpoch } from './session-epoch.mjs';
 import {
-  album, artist, createPlaylist, createRecentPlay, deletePlaylist, favoriteExist, favorites, favoritesPage, history,
-  lyrics, openLogin, playlistDetail, playlists, resolvePlayback, search, setFavorite, updatePlaylistDescription,
+  album, artist, createPlaylist, createRecentPlay, deletePlaylist, discover, favoriteExist, favorites,
+  favoritesPage, history, lyrics, openLogin, playlistDetail, playlists, resolvePlayback, search, setFavorite,
+  updatePlaylistDescription,
 } from './huawei';
 import { thirdPartyLyrics } from './lyrics-fallback';
+import { maskAccountId } from './account-label.mjs';
 import { readCachedLyrics, readLocalLyrics, writeCachedLyrics } from './lyrics-cache';
 import { isTrustedRendererUrl } from './renderer-origin.mjs';
 import { errorFrom, fail, ok } from '../shared/result';
 import type {
-  AlbumDetail, ArtistDetail, AuthStatus, FavoritesPage, HistoryPage, LyricsDoc, Playback, Playlist,
+  AlbumDetail, ArtistDetail, AuthStatus, DiscoverFeed, FavoritesPage, HistoryPage, LyricsDoc, Playback, Playlist,
   PlaylistDetail, PlaylistList, Result, SearchPage,
 } from '../shared/types';
 
@@ -32,6 +34,8 @@ export class AuthManager {
   private writer: ReturnType<typeof createWriteController> | null = null;
   private catalog: ReturnType<typeof createFavoritesCatalog> | null = null;
   private readonly memory = createMemoryCache({ ttlMs: PLAYLIST_CACHE_TTL_MS });
+  // Bumped by every explicit refresh so the seeded shuffle yields a different order for the same day.
+  private discoverRotation = 0;
   private cancelLoginRef: (() => void) | null = null;
   constructor(private readonly progress: (message: string) => void,
     private readonly clearRendererData: () => Promise<void> = async () => undefined,
@@ -44,6 +48,7 @@ export class AuthManager {
   canSaveQueue(): boolean { return !this.loginPromise && !this.sessionEpoch.isTransitioning(); }
   status(): Result<AuthStatus> {
     return ok({ authenticated: !!this.session, musicExpireTime: this.session?.expireTime,
+      accountLabel: maskAccountId(this.session?.snsUserID),
       persistence: this.persistence,
       notice: this.session && this.persistence === 'memory-only' ? '系统安全存储不可用，退出后需重新登录。' : undefined });
   }
@@ -168,6 +173,23 @@ export class AuthManager {
   }
   async getRemoteHistory(): Promise<Result<HistoryPage>> {
     return this.#sessionRequest(() => history(this.session!), '账号状态已更改，请重新读取历史。');
+  }
+  // The daily list is derived from the account's own artists, so it costs several upstream calls;
+  // the memory cache keys it by local day and every explicit refresh bypasses it.
+  async getDiscover(refresh = false): Promise<Result<DiscoverFeed>> {
+    const day = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const key = `discover:${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+    if (!refresh) {
+      const hit = this.memory.get(key);
+      if (hit) return ok(hit.data as DiscoverFeed);
+    } else {
+      this.discoverRotation += 1;
+    }
+    const rotation = this.discoverRotation;
+    const result = await this.#sessionRequest(() => discover(this.session!, undefined, rotation), '账号状态已更改，请重新读取推荐。');
+    if (result.ok) this.memory.set(key, result.data);
+    return result;
   }
   async getAlbum(albumId: string, start: number, limit: number): Promise<Result<AlbumDetail>> {
     return this.#sessionRequest(() => album(this.session!, albumId, start, limit), '账号状态已更改，请重新读取专辑。');

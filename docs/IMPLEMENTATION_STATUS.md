@@ -1,6 +1,14 @@
 # 实现进度
 
-更新时间：2026-10-18。当前以 **Linux 真实 Electron 环境**完成共享 API、业务逻辑、页面和播放器验证；Windows/macOS 不阻塞开发，不使用 Wine 作为运行/验收依赖。不对外发布。
+更新时间：2026-10-28。当前在 **Windows 真实 Electron 环境**完成共享 API、业务逻辑、页面和播放器验证；不使用 Wine 作为运行/验收依赖。不对外发布。
+
+## 2026-10-28 Windows 日用功能收口
+
+- 新增窗口大小/位置记忆、曲目右键菜单（下一首播放/加入队列/查看歌手/专辑）、迷你播放器、桌面歌词、播放速度与睡眠定时；侧栏账号区移到底部并显示脱敏账号尾号，侧栏可折叠。
+- 桌面歌词显示上一句/当前句/下一句；字号可在 18–64px 调整，透明度与鼠标穿透锁定实时生效并持久化；`Ctrl + Alt + L` 可全局锁定/解锁，托盘与主窗口设置页始终可恢复。
+- 系统字体改为按需展开、可搜索、选择后自动收起；修复字体列表 flex 收缩导致的文字堆叠，以及账号菜单遮住侧栏折叠按钮。
+- 播放速度改为持久化（重启后保持上次速度）；睡眠定时新增「播完本曲」；新增全局快捷键（空格 / ←→ / ↑↓ / Ctrl+←→ / Ctrl+F，焦点在输入框/下拉/滑块上时让位）；窗口不在前台时切歌发系统通知（`setAppUserModelId` 在 Windows 上补齐）。
+- Windows 本机验证：177 项离线单测全绿；Electron smoke、UI、business 三套测试全绿；真实登录会话下主窗口、歌词浮窗、设置持久化与托盘入口均完成手工/CDP 验证。
 
 ## M0–M6
 
@@ -66,7 +74,7 @@
 - 可选 Windows 烟测需要 ffmpeg，runner 不自带，已在步骤内 `choco install ffmpeg`；该步骤失败不阻断任务（此前失败即为缺少 ffmpeg，非应用缺陷）。
 - 首次运行验证：run 38936061865 全绿，产物 100,141,218 字节，`SHA256 6d8c829c1613f46da6c01abb04699e7fe8a0001bbfe2de46424d3373dc7b774e`，应用 exe 名称为“华为音乐第三方客户端（学习版）.exe”，图标像素校验通过。
 - 为让校验适配 Windows，静态检查改为：解包定位（不解析 7-Zip 清单文本）、兼容展平布局、asar 解包后按文件比对（不再依赖 asar 条目分隔符）。这些修复保留了 Linux 侧原有的 payload 名与 PE 架构断言。
-- 原生 Windows 构建与本地 Linux 交叉构建字节不同，两者均通过同一套静态校验；**Windows 启动/播放仍未验收**。
+- 原生 Windows 构建与本地 Linux 交叉构建字节不同，两者均通过同一套静态校验；2026-10-28 已在 Windows 本机完成源码构建的启动、真实账号音乐库读取与播放验证。NSIS 安装/卸载流程仍需在安装包构建后单独验收。
 
 ## 第四批完成（去掉默认菜单 / 改名学习版）
 
@@ -115,7 +123,10 @@
 - Linux 构建：`npm run dist:linux`；产物 `release/linux-x64/`。`test:packaged` 可检查 unpacked 或从 AppImage 提取的实际二进制。
 - 真实账号完整收藏：新增 `npm run test:login-live -- --login --qr --full-library`，同一次本人授权核验总数、完整分页和滚动加载，只输出统计；默认不会运行。真实 MP3/FLAC 播放仍另验，不以该脚本冒充。
 - 最新 AppImage：`release/linux-x64/huawei-music-desktop-0.0.1-linux-x86_64-internal.AppImage`；`release/linux-x64/SHA256SUMS` 已生成。`npm run test:packaged -- <AppImage路径>` 已通过，未上传。
-- ~~Windows portable~~（已废弃）：2026-10-18 起不再产出单文件免安装版，改为 NSIS 安装包；历史验证记录保留但不再适用当前构建目标。
+- Windows 交付：NSIS 安装包在当前网络下打不出来（electron-builder 下载阶段超时），改为交付免安装目录版
+  `release/华为音乐-学习版/`（双击 `华为音乐.exe` 即用，桌面快捷方式已指向它）。它不是单文件 portable，
+  而是 out/ + package.json + electron 运行时同目录；升级时同步 `out/` 与 `package.json` 即可。
+  `启动华为音乐.bat` 走源码目录（需先 `npm run build`），两条路径都可用。
 - ~~`npm run test:portable-data`~~（已随 portable 目标移除）：该测试验证的是「解压到临时目录后用户数据不丢」，安装包场景改为覆盖安装保留 userData，待 Windows 真机验收。
 - 视觉选择：`design-previews/2026-10-15-desktop/index.html` 的 A/B/C/D，未选前保持当前基础样式。
 - Linux 密钥服务、真实听播、托盘/物理媒体键/睡眠仍需环境证据；Windows/macOS 原生测试延后，不阻塞共享逻辑。

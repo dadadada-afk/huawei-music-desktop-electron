@@ -12,6 +12,7 @@
   --font-num: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
 
   --bg-0: #f1f0ed;
+  --titlebar-h: 34px;
   --panel: rgba(255, 255, 255, calc(0.66 * var(--panel-alpha)));
   --panel-solid: #ffffff;
   --panel-soft: rgba(255, 255, 255, calc(0.44 * var(--panel-alpha)));
@@ -71,6 +72,10 @@
 [hidden] { display: none !important; }
 
 html, body { height: 100%; }
+/* The shell is the only scroller; the document itself must never scroll. Without this, the
+   `margin-top: var(--titlebar-h)` that reserves the title-bar strip collapses through #root into
+   the document scroll area and adds a stray 34px of page scroll. */
+#root { height: 100vh; overflow: hidden; }
 body {
   margin: 0;
   min-width: 960px;
@@ -108,9 +113,23 @@ select:focus-visible,
   grid-template-columns: 234px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px 10px;
-  height: 100vh;
+  /* The native title bar is gone, so the window reserves this strip itself and paints it with the
+     same colour as the OS overlay; without the reservation the sidebar would sit under the buttons. */
+  height: calc(100vh - var(--titlebar-h));
+  margin-top: var(--titlebar-h);
   padding: 10px;
   overflow: hidden;
+}
+
+.titlebar-drag {
+  position: fixed;
+  top: 0;
+  left: 0;
+  /* Stops short of the OS window buttons so their clicks are never swallowed by the drag region. */
+  right: 150px;
+  height: var(--titlebar-h);
+  z-index: 55;
+  -webkit-app-region: drag;
 }
 
 /* ========================================================================== */
@@ -132,18 +151,52 @@ select:focus-visible,
   overscroll-behavior: contain;
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 30px;
+}
+
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 8px;
-  margin-bottom: 30px;
+  min-width: 0;
+  flex: 1;
   font-size: var(--fs-lg);
   font-weight: 650;
   letter-spacing: -0.015em;
   line-height: 1.25;
   color: var(--ink);
 }
+.brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The collapse control stays visible in both states: collapsed to icons there is no label to click,
+   so hiding it with the rest of the sidebar chrome would trap the user in the collapsed layout. */
+.sidebar-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s var(--ease);
+}
+.sidebar-toggle:hover { background: var(--hover); color: var(--ink); }
+.sidebar-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .brand-mark {
   flex: none;
   width: 36px;
@@ -202,16 +255,110 @@ select:focus-visible,
 
 .nav-sep { height: 1px; margin: 11px 10px; background: var(--line); }
 
+.sidebar-account { position: relative; margin-top: auto; }
+
+/* Sits above the collapsed rail instead of inside it, so the menu still has readable width. It is
+   portalled to the body and positioned from the trigger's rect, hence position: fixed. */
+.more-menu {
+  position: fixed;
+  z-index: 40;
+  width: 224px;
+  padding: 12px 13px;
+  display: grid;
+  gap: 14px;
+  border-radius: 12px;
+  background: var(--panel-solid, #fff);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 32px rgba(22, 24, 28, 0.18);
+}
+.more-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+}
+.more-head svg { flex: none; }
+.more-note { margin-left: auto; color: var(--accent); font-variant-numeric: tabular-nums; }
+.more-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.more-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.more-chip:hover { background: var(--hover); }
+.more-chip.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.more-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.account-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 168px;
+  padding: 5px;
+  display: grid;
+  gap: 1px;
+  border-radius: 12px;
+  background: var(--panel-solid, #fff);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 32px rgba(22, 24, 28, 0.18);
+}
+.account-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.account-menu button:hover:not(:disabled) { background: var(--hover); }
+.account-menu button:disabled { opacity: 0.5; cursor: default; }
+.account-menu button.danger { color: var(--accent); }
+.account-menu button svg { flex: none; color: var(--ink-3); }
+.account-id {
+  margin: 0 0 4px;
+  padding: 6px 10px 7px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.account-id span { font-weight: 400; font-size: var(--fs-xs); color: var(--ink-3); letter-spacing: 0.04em; }
+.account-menu button.danger svg { color: var(--accent); }
+.account-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 .sidebar-foot {
   margin-top: auto;
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   padding: 12px 10px 4px;
   font-size: var(--fs-xs);
   color: var(--ink-3);
+  text-align: left;
+  background: none;
+  border: 0;
   border-top: 1px solid var(--line);
+  border-radius: 0;
+  transition: color 0.15s var(--ease);
 }
+.sidebar-foot:hover:not(:disabled) { color: var(--ink); }
+.sidebar-foot:disabled { cursor: default; opacity: 0.6; }
+.sidebar-foot .foot-icon { margin-left: auto; opacity: 0; transition: opacity 0.15s var(--ease); }
+.sidebar-foot:hover:not(:disabled) .foot-icon { opacity: 1; }
 .status-dot {
   width: 6px;
   height: 6px;
@@ -252,8 +399,10 @@ select:focus-visible,
   gap: 20px;
   margin: 0 -30px 6px;
   padding: 26px 30px 16px;
-  background: rgba(246, 245, 242, 0.74);
-  backdrop-filter: blur(18px) saturate(1.08);
+  /* Near-opaque: at 0.74 the scrolled page showed through as a band of blurred text under the
+     title, which read as broken layout rather than as glass. */
+  background: rgba(246, 245, 242, 0.94);
+  backdrop-filter: blur(12px) saturate(1.04);
   box-shadow: 0 1px 0 rgba(22, 24, 28, 0.04);
 }
 .topbar > div:first-child { min-width: 0; }
@@ -335,6 +484,9 @@ select:focus-visible,
 }
 .icon-button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
 .icon-button:disabled { opacity: 0.4; }
+/* Toggling an icon button opens a helper window, so the pressed state must stay visible: without it
+   the only feedback is a window that may be behind the current one. */
+.icon-button[aria-pressed='true'] { background: var(--accent-soft); color: var(--accent-deep); }
 
 /* Embedded official login page strip (height must match LOGIN_VIEW_TOP_INSET) */
 .login-bar {
@@ -649,6 +801,68 @@ select:focus-visible,
 }
 .playlist-card small { font-size: var(--fs-xs); color: var(--ink-3); }
 
+/* Discover ---------------------------------------------------------------- */
+.discover { display: flex; flex-direction: column; gap: 18px; }
+.discover-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 20px 22px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, var(--accent-soft), transparent 62%), var(--surface);
+}
+.discover-hero h2 { margin: 2px 0 6px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.discover-hero .page-sub { margin: 0; max-width: 46ch; }
+.discover-hero .head-actions { display: flex; gap: 10px; flex-shrink: 0; }
+.section-title {
+  margin: 6px 0 -4px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+}
+.artist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 16px 14px;
+}
+.artist-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  text-align: center;
+  border-radius: var(--radius-md);
+  transition: transform 0.18s var(--ease);
+}
+.artist-card:hover { transform: translateY(-2px); }
+.artist-art {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.85);
+  background: linear-gradient(150deg, #d9d7d2, #b9b6b0);
+  box-shadow: 0 1px 2px rgba(16, 18, 22, 0.08), 0 8px 20px rgba(16, 18, 22, 0.1);
+}
+.artist-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.artist-card strong {
+  max-width: 100%;
+  font-size: var(--fs-sm);
+  font-weight: 550;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artist-card small { font-size: var(--fs-xs); color: var(--ink-3); }
+
 /* ========================================================================== */
 /* Forms                                                                     */
 /* ========================================================================== */
@@ -780,6 +994,8 @@ select:focus-visible,
 }
 .settings-form input[type='checkbox']:checked { background: var(--accent); }
 .settings-form input[type='checkbox']:checked::after { transform: translateX(15px); }
+/* Inline secondary text inside a settings row; the block-level .hint below owns the padded variant. */
+.settings-form label small { margin-left: 9px; color: var(--ink-3); font-size: var(--fs-xs); font-weight: 400; }
 .settings-form .hint { padding: 12px 2px; border-bottom: 1px solid var(--line); margin: 0; }
 .settings-form .ghost.danger { align-self: flex-start; margin-top: 18px; }
 .settings-form > .hint:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -847,7 +1063,8 @@ select:focus-visible,
   border-bottom: 1px solid var(--line);
 }
 .appearance-label { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
-.appearance-label > span:first-child { font-size: var(--fs-sm); color: var(--ink); }
+.appearance-label > span:first-child { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-sm); color: var(--ink); }
+.appearance-label > span:first-child small { font-family: var(--font-num); font-size: var(--fs-xs); color: var(--ink-3); }
 .accent-swatches { display: flex; gap: 12px; }
 .accent-swatch {
   width: 24px;
@@ -931,8 +1148,10 @@ select:focus-visible,
 }
 
 .font-picker { display: grid; gap: 8px; margin-top: 10px; }
-.font-picker > input {
-  width: 100%;
+.font-picker-head { display: flex; align-items: center; gap: 8px; }
+.font-picker-head > input {
+  flex: 1;
+  min-width: 0;
   padding: 8px 11px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
@@ -940,7 +1159,8 @@ select:focus-visible,
   color: var(--ink);
   font-size: var(--fs-sm);
 }
-.font-picker > input::placeholder { color: var(--ink-4); }
+.font-picker-head > input::placeholder { color: var(--ink-4); }
+.font-picker-head > button { flex: none; }
 .font-list {
   display: flex;
   flex-direction: column;
@@ -953,10 +1173,14 @@ select:focus-visible,
   background: rgba(255, 255, 255, 0.72);
 }
 .font-list button {
+  /* The list is a column flex box with a max-height, so without this every row shrinks to its bare
+     text height and the rows visually collide. */
+  flex: none;
   padding: 7px 9px;
   border-radius: 7px;
   text-align: left;
   font-size: var(--fs-sm);
+  line-height: 1.5;
   color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1082,6 +1306,10 @@ select:focus-visible,
 .lyrics p.has-translation + p { padding-top: 2px; }
 .lyrics.synced p { cursor: pointer; }
 .lyrics.synced p:hover { color: var(--ink); }
+/* Already sung: dimmer than the upcoming lines, so scrolling back through the panel still shows
+   where playback currently is. */
+.lyrics p.passed { color: var(--ink-4); }
+.lyrics.synced p.passed:hover { color: var(--ink); }
 .lyrics.synced p.active {
   color: var(--accent-deep);
   font-weight: 650;
@@ -1234,6 +1462,10 @@ select:focus-visible,
   cursor: pointer;
 }
 .stage-line:hover { color: rgba(246, 245, 242, 0.72); }
+/* Sung lines step back further than upcoming ones, so the column reads as past → present → future
+   instead of every non-active line looking identical. */
+.stage-line.passed { color: rgba(246, 245, 242, 0.2); }
+.stage-line.passed:hover { color: rgba(246, 245, 242, 0.6); }
 .stage-line.active {
   color: #fff;
   transform: scale(1.04);
@@ -1397,6 +1629,8 @@ button.cover:hover { transform: translateY(-1px); }
 
 .volume { display: flex; align-items: center; justify-content: flex-end; gap: 4px; color: var(--ink-3); min-width: 0; }
 .volume > svg { flex: none; }
+/* Six controls share this row; without nowrap the pill labels broke mid-word ("无/损", "队列/31"). */
+.volume > button { flex: none; white-space: nowrap; }
 
 .quality-button {
   padding: 4px 9px;
@@ -1466,7 +1700,7 @@ input[type='range']:focus-visible { outline: none; }
 input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-soft), 0 1px 4px rgba(16, 18, 22, 0.3); }
 
 .stage-progress input[type='range'] { --track: rgba(255, 255, 255, 0.22); --fill: #ffffff; }
-.volume input[type='range'] { width: 78px; }
+.volume input[type='range'] { width: 78px; min-width: 0; flex: 0 1 78px; }
 
 /* ========================================================================== */
 /* Scrollbars                                                                */
@@ -1509,14 +1743,35 @@ input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
 }
 
 @media (max-width: 1020px) {
-  .app-shell { grid-template-columns: 76px minmax(0, 1fr); }
-  .brand span:last-child, .nav-item span, .nav-label, .sidebar-foot span { display: none; }
-  .brand { justify-content: center; padding: 0; margin-bottom: 20px; }
-  .nav-item { justify-content: center; padding: 11px 0; }
-  .nav-item.active::before { display: none; }
-  .sidebar-foot { justify-content: center; }
-  .nav-sep { margin: 9px 6px; }
+  /* A narrow window falls back to the icon rail, but only while the user has not explicitly asked
+     for the expanded sidebar. Without the :not() guard this block beat every expanded rule, so the
+     expand toggle simply looked dead below 1020px. */
+  .app-shell:not(.sidebar-expanded) { grid-template-columns: 76px minmax(0, 1fr); }
+  .app-shell:not(.sidebar-expanded) .brand span:last-child,
+  .app-shell:not(.sidebar-expanded) .nav-item span,
+  .app-shell:not(.sidebar-expanded) .nav-label,
+  .app-shell:not(.sidebar-expanded) .sidebar-foot .foot-label { display: none; }
+  .app-shell:not(.sidebar-expanded) .brand { justify-content: center; padding: 0; margin-bottom: 20px; }
+  .app-shell:not(.sidebar-expanded) .nav-item { justify-content: center; padding: 11px 0; }
+  .app-shell:not(.sidebar-expanded) .nav-item.active::before { display: none; }
+  .app-shell:not(.sidebar-expanded) .sidebar-foot { justify-content: center; }
+  .app-shell:not(.sidebar-expanded) .sidebar-foot .foot-icon { opacity: 1; margin-left: 0; }
+  .app-shell:not(.sidebar-expanded) .nav-sep { margin: 9px 6px; }
 }
+
+/* Manual collapse mirrors the narrow-window rail so both paths land on the same layout. */
+.app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+.sidebar-collapsed .brand-name,
+.sidebar-collapsed .nav-item span,
+.sidebar-collapsed .nav-label,
+.sidebar-collapsed .sidebar-foot .foot-label { display: none; }
+.sidebar-collapsed .brand-row { flex-direction: column; gap: 4px; margin-bottom: 18px; }
+.sidebar-collapsed .brand { justify-content: center; padding: 0; flex: none; }
+.sidebar-collapsed .nav-item { justify-content: center; padding: 11px 0; }
+.sidebar-collapsed .nav-item.active::before { display: none; }
+.sidebar-collapsed .sidebar-foot { justify-content: center; }
+.sidebar-collapsed .sidebar-foot .foot-icon { opacity: 1; margin-left: 0; }
+.sidebar-collapsed .nav-sep { margin: 9px 6px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -1525,3 +1780,52 @@ input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
     animation-duration: 0s !important;
   }
 }
+
+/* Right-click menu for a single track. Positioned from the cursor by the component, so only the
+   surface itself lives here. */
+.track-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 168px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  background: var(--surface, #fff);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.track-menu button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.track-menu button:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.track-menu button:focus-visible { outline: 2px solid var(--accent, #c8202e); outline-offset: -2px; }
+
+/* Desktop-lyric colour presets. The presets cover the tints people actually pick, while the
+   colour input keeps every other value reachable. */
+.lyrics-colors { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lyrics-color {
+  width: 26px; height: 26px; padding: 0; border-radius: 50%; cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+}
+.lyrics-color.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.lyrics-color-picker {
+  width: 30px; height: 26px; padding: 0; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface);
+}
+
+/* Section heading with an inline action (e.g. the discover list's expand toggle). */
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.section-title-row .section-title { margin: 0; }
+.ghost.small { padding: 5px 12px; font-size: var(--fs-sm); }

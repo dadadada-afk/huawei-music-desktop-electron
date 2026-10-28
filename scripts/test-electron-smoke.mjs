@@ -117,13 +117,16 @@ try {
   assert.deepEqual(boundary.apiKeys, ['app', 'auth', 'fonts', 'lyrics', 'music', 'onNotice', 'player', 'queue', 'settings', 'window']);
   assert.deepEqual(boundary.authKeys, ['cancelLogin', 'login', 'logout', 'onProgress', 'status']);
   assert.deepEqual(boundary.musicKeys, [
-    'album', 'artist', 'createPlaylist', 'deletePlaylist', 'favoriteState', 'favorites', 'favoritesSummary', 'history', 'lyrics',
+    'album', 'artist', 'createPlaylist', 'deletePlaylist', 'discover', 'favoriteState', 'favorites', 'favoritesSummary', 'history', 'lyrics',
     'playlistDetail', 'playlists', 'reportPlayback', 'resolvePlayback', 'search', 'setFavorite', 'updatePlaylistDescription',
   ]);
   assert.deepEqual(boundary.settingsKeys, ['get', 'update']);
   assert.deepEqual(boundary.queueKeys, ['load', 'save']);
   assert.deepEqual(boundary.windowKeys, ['minimize', 'setCloseBehavior']);
-  assert.deepEqual(boundary.playerKeys, ['onCommand']);
+  assert.deepEqual(boundary.playerKeys, [
+    'broadcast', 'control', 'onAuxState', 'onCommand', 'onLyricsAppearance', 'onSeek', 'onState',
+    'requestState', 'seek', 'setLyricsAppearance', 'showMain', 'toggleAux',
+  ]);
   assert.equal(boundary.hasGenericInvoke, false, 'preload exposed a generic IPC entry point');
   assert.equal(boundary.nodeProcess, 'undefined');
   assert.equal(boundary.requireType, 'undefined');
@@ -215,6 +218,8 @@ try {
       actualQuality: input.trackId === 'smoke-mp3' ? 'standard' : 'lossless',
     } }));
   }, { urls: localUrls });
+  // Navigate explicitly: the landing view is the discover page, not the library.
+  await window.getByRole('button', { name: '我的收藏', exact: true }).click();
   // Anchor to the row's own accessible name; a bare /Smoke MP3/ also matches the favorite button.
   const mp3Row = window.getByRole('button', { name: /^Smoke MP3/ });
   const flacRow = window.getByRole('button', { name: /^Smoke FLAC/ });

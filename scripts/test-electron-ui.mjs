@@ -130,7 +130,7 @@ try {
     genericInvoke: typeof window.desktop?.invoke,
   }));
   assert.deepEqual(boundary.apiKeys, ['app', 'auth', 'fonts', 'lyrics', 'music', 'onNotice', 'player', 'queue', 'settings', 'window']);
-  assert.deepEqual(boundary.musicKeys, ['album', 'artist', 'createPlaylist', 'deletePlaylist', 'favoriteState', 'favorites', 'favoritesSummary', 'history', 'lyrics',
+  assert.deepEqual(boundary.musicKeys, ['album', 'artist', 'createPlaylist', 'deletePlaylist', 'discover', 'favoriteState', 'favorites', 'favoritesSummary', 'history', 'lyrics',
     'playlistDetail', 'playlists', 'reportPlayback', 'resolvePlayback', 'search', 'setFavorite', 'updatePlaylistDescription']);
   assert.equal(boundary.nodeProcess, 'undefined');
   assert.equal(boundary.genericInvoke, 'undefined', 'preload exposed a generic IPC entry point');
@@ -181,6 +181,8 @@ try {
   await installHandlers(app, urls);
 
   // Favorites page: list, playback with a single Audio element.
+  // Navigate explicitly instead of relying on the landing view, which is the discover page.
+  await page.getByRole('button', { name: '我的收藏', exact: true }).click();
   // Anchor to the row's own accessible name; a bare /Smoke MP3/ also matches the favorite button.
   const mp3Row = page.getByRole('button', { name: /^Smoke MP3/ });
   await mp3Row.waitFor({ timeout: 15_000 });
@@ -218,7 +220,8 @@ try {
   assert.deepEqual(writes, [{ trackId: 'smoke-mp3', favorite: false }]);
 
   // Lyrics / queue panels are mutually exclusive overlays.
-  await page.getByRole('button', { name: '歌词' }).click();
+  // `exact` keeps this off the desktop-lyric button, whose accessible name also ends in 歌词.
+  await page.getByRole('button', { name: '歌词', exact: true }).click();
   await page.getByText('第一句歌词').waitFor({ timeout: 5000 });
 
   // Local LRC import: the file dialog is stubbed, everything else runs for real (disk + IPC + parse).
@@ -288,7 +291,7 @@ try {
   await page.getByText(/本地导入 1 首/).waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: '清除本地导入' }).click();
   await page.getByText(/本地导入 0 首/).waitFor({ timeout: 5000 });
-  await page.getByRole('combobox', { name: '关闭窗口时行为' }).selectOption('tray');
+  await page.getByRole('combobox', { name: '关闭或最小化窗口时行为' }).selectOption('tray');
   await page.getByText('关闭窗口时将最小化到托盘。').waitFor({ timeout: 5000 });
   // `app.getPath('userData')` is the isolated profile passed via --user-data-dir, so the store can
   // be read straight from the test process (Playwright's main-process evaluate cannot import modules).
@@ -364,6 +367,42 @@ try {
   const screenshots = join(process.cwd(), 'release', 'qa');
   await mkdir(screenshots, { recursive: true });
   await page.screenshot({ path: join(screenshots, 'linux-settings-960.png') });
+
+  // Playback speed and the sleep timer live in the player bar, not in settings: both are per-listen
+  // decisions. The speed must reach the Audio element, not just the button state.
+  await page.getByRole('button', { name: '播放选项' }).click();
+  await page.waitForSelector('.more-menu', { state: 'visible' });
+  const chips = await page.locator('.more-chip').allTextContents();
+  assert.deepEqual(chips, ['0.75x', '正常', '1.25x', '1.5x', '2x', '关闭', '15 分钟', '30 分钟', '60 分钟', '播完本曲']);
+  await page.evaluate(() => {
+    window.__rates = [];
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'playbackRate');
+    Object.defineProperty(HTMLMediaElement.prototype, 'playbackRate', {
+      configurable: true,
+      get() { return descriptor.get.call(this); },
+      set(value) { window.__rates.push(value); return descriptor.set.call(this, value); },
+    });
+  });
+  await page.locator('.more-rate .more-chip', { hasText: '1.5x' }).click();
+  await page.waitForTimeout(300);
+  assert.deepEqual(await page.evaluate(() => window.__rates), [1.5], '1.5x must be written to the Audio element');
+  assert.equal(await page.locator('.more-rate .more-chip.active').textContent(), '1.5x');
+  await page.locator('.more-rate .more-chip', { hasText: '正常' }).click();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('.more-rate .more-chip.active').textContent(), '正常', 'speed returns to 1x');
+
+  // The end-of-track timer is a third state, not a minute count, so it has to arm and read back as
+  // armed rather than as "no timer".
+  await page.locator('.more-sleep .more-chip', { hasText: '播完本曲' }).click();
+  await page.waitForTimeout(200);
+  await page.getByRole('button', { name: '播放选项' }).click();
+  await page.waitForSelector('.more-menu', { state: 'visible' });
+  assert.equal(await page.locator('.more-sleep .more-chip[aria-checked="true"]').textContent(), '播完本曲');
+  assert.match(await page.locator('.more-sleep .more-note').textContent(), /播完本曲暂停/);
+  await page.locator('.more-sleep .more-chip', { hasText: '关闭' }).click();
+  await page.waitForTimeout(200);
+  await page.getByRole('button', { name: '播放选项' }).click();
+
   await page.getByRole('button', { name: '播放队列' }).click();
   await page.screenshot({ path: join(screenshots, 'linux-queue-960.png') });
   await page.getByRole('button', { name: '关闭' }).click();

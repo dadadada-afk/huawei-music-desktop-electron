@@ -5,6 +5,8 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: AppError };
 export type AuthStatus = {
   authenticated: boolean;
   displayName?: string;
+  /** Masked account id, so the sidebar can name the signed-in account without exposing it. */
+  accountLabel?: string;
   musicExpireTime?: string;
   persistence: 'secure' | 'memory-only' | 'unavailable';
   notice?: string;
@@ -41,6 +43,12 @@ export type PlaylistList = { playlists: Playlist[]; truncated: boolean; cacheHin
 export type PlaylistDetail = { playlist: Playlist; tracks: Track[]; nextStart: number; hasMore: boolean; cacheHint?: string; cached?: boolean; cachedAt?: number };
 export type SearchPage = { tracks: Track[]; nextStart: number; hasMore: boolean; total?: number };
 export type HistoryPage = { tracks: Track[] };
+export type DiscoverArtist = { id: string; name: string; coverUrl?: string; count: number };
+export type DiscoverFeed = {
+  daily: { tracks: Track[]; day: string; source: 'library' | 'favorites' };
+  playlists: Playlist[];
+  artists: DiscoverArtist[];
+};
 export type LyricSegment = { timeMs: number | null; text: string };
 export type LyricsLine = {
   timeMs: number | null;
@@ -112,12 +120,49 @@ export type AppSettings = {
   syncHistory: boolean;
   // Match lyrics from public third-party libraries when the provider returns none.
   thirdPartyLyrics: boolean;
+  /** Sidebar shows icons only. Persisted because it is a layout preference, not a transient toggle. */
+  sidebarCollapsed: boolean;
+  /** Desktop lyric overlay window opacity, 0.3–1. */
+  lyricsOpacity: number;
+  /** Locked means click-through: the overlay stops capturing the mouse so it never blocks the desktop. */
+  lyricsLocked: boolean;
+  /** Desktop lyric overlay type size in px, 18–64. */
+  lyricsFontSize: number;
+  /** Colour of the line being sung, as #rrggbb. Empty means the built-in warm white. */
+  lyricsColor: string;
+  /**
+   * Playback speed. Persisted because a listener who slowed a podcast to 0.75x expects the next
+   * launch to still be at 0.75x, not to be silently reset to normal speed.
+   */
+  playbackRate: number;
 };
 
 export type SavedQueue = {
   tracks: Track[];
   index: number;
   positionSeconds: number;
+};
+
+/** Fire-and-forget playback commands from the tray, the media keys and the mini player. */
+export type PlayerCommand = 'play-pause' | 'next' | 'previous';
+
+/** The two always-on-top helpers. Neither owns playback; both only mirror the main window. */
+export type AuxWindowKind = 'mini' | 'lyrics';
+
+/** Applied state of the desktop lyric overlay. `locked` means click-through. */
+export type LyricsAppearance = { opacity: number; locked: boolean; fontSize: number; color: string };
+
+/** What the main window broadcasts so the auxiliary windows can never drift out of sync. */
+export type PlayerSnapshot = {
+  title: string;
+  artists: string;
+  coverUrl?: string;
+  playing: boolean;
+  position: number;
+  duration: number;
+  /** Plain text per line, already ordered; the receiver picks the active one by index. */
+  lyrics: string[];
+  lyricIndex: number;
 };
 
 export type DesktopApi = {
@@ -135,6 +180,7 @@ export type DesktopApi = {
     playlistDetail(input: { id: string; kind: Playlist['kind']; start?: number; limit?: number; refresh?: boolean }): Promise<Result<PlaylistDetail>>;
     search(input: { query: string; start?: number; limit?: number }): Promise<Result<SearchPage>>;
     history(): Promise<Result<HistoryPage>>;
+    discover(input?: { refresh?: boolean }): Promise<Result<DiscoverFeed>>;
     album(input: { id: string; start?: number; limit?: number }): Promise<Result<AlbumDetail>>;
     artist(input: { id: string }): Promise<Result<ArtistDetail>>;
     lyrics(input: {
@@ -170,7 +216,29 @@ export type DesktopApi = {
     clearCache(input?: { local?: boolean }): Promise<Result<LyricsCacheInfo>>;
   };
   app: { quit(): Promise<void> };
-  player: { onCommand(listener: (command: 'play-pause' | 'next' | 'previous') => void): () => void };
+  player: {
+    onCommand(listener: (command: PlayerCommand) => void): () => void;
+    /** Main window only: publish the current snapshot to the auxiliary windows. */
+    broadcast(state: PlayerSnapshot): void;
+    /** Auxiliary windows only: subscribe to snapshots, starting with the current one. */
+    onState(listener: (state: PlayerSnapshot | null) => void): () => void;
+    /** Auxiliary windows only: ask for the current snapshot once the listener is actually attached. */
+    requestState(): void;
+    /** Auxiliary windows only: a command back to the window that owns playback. */
+    control(command: PlayerCommand): void;
+    seek(seconds: number): void;
+    /** Main window only: a seek request forwarded from a helper window. */
+    onSeek(listener: (seconds: number) => void): () => void;
+    /** Opens or closes the given helper window; resolves to whether it is now open. */
+    toggleAux(kind: AuxWindowKind): Promise<boolean>;
+    /** Main window only: the helper windows can also be opened from the tray, so their state is pushed. */
+    onAuxState(listener: (state: { kind: AuxWindowKind; open: boolean }) => void): () => void;
+    showMain(): void;
+    /** Lock (click-through) and opacity of the desktop lyric overlay; callable from either window. */
+    setLyricsAppearance(input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }): Promise<Result<LyricsAppearance>>;
+    /** Lyrics window only: the applied appearance, so the toolbar never shows a stale state. */
+    onLyricsAppearance(listener: (state: LyricsAppearance) => void): () => void;
+  };
   onNotice(listener: (message: string) => void): () => void;
 };
 

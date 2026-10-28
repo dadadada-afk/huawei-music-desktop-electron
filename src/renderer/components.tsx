@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  ChevronUp, Heart, Headphones, ListMusic, Minimize2, Music2, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X,
+  Captions, ChevronUp, Gauge, Heart, Headphones, ListMusic, ListOrdered, Minimize2, Moon, MoreHorizontal,
+  Music2, Pause, PictureInPicture2, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { activeLyricIndex } from '../lyrics.mjs';
 import type { LyricsDoc, Playlist, Track } from '../shared/types';
@@ -10,11 +12,21 @@ export function formatDuration(seconds?: number): string {
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 }
 
+/** Total length stays unknown until the audio element reports metadata, so a zero is not "0:00". */
+export function formatTotal(seconds?: number): string {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return '--:--';
+  return formatDuration(seconds);
+}
+
 export type TrackActions = {
   currentTrackId: string | null;
   playing: boolean;
   favoriteOf(trackId: string): boolean | undefined;
   play(tracks: Track[], index: number): void;
+  /** Queue the track right after the one playing, without interrupting it. */
+  playNext(track: Track): void;
+  /** Append to the end of the queue. */
+  enqueue(track: Track): void;
   toggleFavorite(track: Track, favorite: boolean): void;
   openAlbum(id: string): void;
   openArtist(id: string): void;
@@ -47,6 +59,29 @@ function TrackArt({ track, size = 20 }: { track: Track; size?: number }) {
 
 export function TrackTable({ tracks, actions, onLoadMore, hasMore, busy, loadMoreLabel = '加载更多', emptyText }: TrackTableProps) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ track: Track; index: number; x: number; y: number } | null>(null);
+  // A context menu anchored to the cursor would sit off-screen near the right/bottom edge, so it is
+  // measured against the viewport instead of trusting the click position.
+  const menuStyle = (point: { x: number; y: number }): CSSProperties => {
+    const width = 180;
+    const height = 240;
+    const left = Math.min(point.x, Math.max(8, window.innerWidth - width - 8));
+    const top = point.y + height > window.innerHeight ? Math.max(8, point.y - height) : point.y;
+    return { left, top };
+  };
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenu(null); };
+    window.addEventListener('click', close);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
   if (!tracks.length) return <div className="list-empty"><p>{emptyText ?? '这里还没有内容。'}</p></div>;
   return <>
     <div className="track-list">
@@ -62,6 +97,11 @@ export function TrackTable({ tracks, actions, onLoadMore, hasMore, busy, loadMor
           aria-label={`${track.title}，${track.artists.map(artist => artist.name).join('、') || '未知艺人'}`}
           onClick={() => setSelected(key)}
           onDoubleClick={() => actions.play(tracks, index)}
+          onContextMenu={event => {
+            event.preventDefault();
+            setSelected(key);
+            setMenu({ track, index, x: event.clientX, y: event.clientY });
+          }}
           onKeyDown={event => {
             if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); actions.play(tracks, index); }
           }}
@@ -105,6 +145,24 @@ export function TrackTable({ tracks, actions, onLoadMore, hasMore, busy, loadMor
         </div>;
       })}
     </div>
+    {menu && createPortal(<div className="track-menu" style={menuStyle(menu)} role="menu">
+      <button role="menuitem" onClick={() => { actions.play(tracks, menu.index); setMenu(null); }}>立即播放</button>
+      <button role="menuitem" onClick={() => { actions.playNext(menu.track); setMenu(null); }}>下一首播放</button>
+      <button role="menuitem" onClick={() => { actions.enqueue(menu.track); setMenu(null); }}>加入播放队列</button>
+      <button role="menuitem" onClick={() => { actions.toggleFavorite(menu.track, !actions.favoriteOf(menu.track.id)); setMenu(null); }}>
+        {actions.favoriteOf(menu.track.id) ? '取消收藏' : '收藏'}
+      </button>
+      {menu.track.artists.some(artist => artist.id) && <button role="menuitem" onClick={() => {
+        const artist = menu.track.artists.find(item => item.id);
+        setMenu(null);
+        if (artist?.id) actions.openArtist(artist.id);
+      }}>查看歌手</button>}
+      {menu.track.album?.id && <button role="menuitem" onClick={() => {
+        const albumId = menu.track.album?.id;
+        setMenu(null);
+        if (albumId) actions.openAlbum(albumId);
+      }}>查看专辑</button>}
+    </div>, document.body)}
     {hasMore && onLoadMore && <button className="ghost load-more" onClick={onLoadMore} disabled={busy}>{busy ? '正在读取…' : loadMoreLabel}</button>}
   </>;
 }
@@ -140,6 +198,13 @@ type PlayerBarProps = {
   onSeekPreview(value: number): void;
   onSeekCommit(): void;
   onVolume(value: number): void;
+  playbackRate: number;
+  onPlaybackRate(rate: number): void;
+  /** Seconds left on the sleep timer, or null when none is running. */
+  sleepRemaining: number | null;
+  /** True when the timer waits for the current track to end instead of a wall-clock deadline. */
+  sleepAfterTrack: boolean;
+  onSleepTimer(minutes: number): void;
   onToggleMute(): void;
   onToggleQuality(): void;
   onToggleRepeat(): void;
@@ -147,6 +212,11 @@ type PlayerBarProps = {
   onToggleLyrics(): void;
   onToggleQueue(): void;
   onOpenStage(): void;
+  /** Opens or closes the always-on-top helper windows owned by the main process. */
+  onToggleMini(): void;
+  onToggleDesktopLyrics(): void;
+  miniOpen: boolean;
+  desktopLyricsOpen: boolean;
   lyricsOpen: boolean;
   queueOpen: boolean;
   queueCount: number;
@@ -183,16 +253,20 @@ export function PlayerBar(props: PlayerBarProps) {
     </div>
     <div className="player-controls">
       <div className="buttons">
-        <button aria-label="随机播放" aria-pressed={props.shuffle} className={props.shuffle ? 'active' : ''} onClick={props.onToggleShuffle} disabled={props.disabled} title="随机播放">
-          <ListMusic size={15} />
+        <button aria-label="随机播放" aria-pressed={props.shuffle} className={props.shuffle ? 'active' : ''} onClick={props.onToggleShuffle} disabled={props.disabled} title={props.shuffle ? '随机播放：开' : '随机播放：关'}>
+          <Shuffle size={15} />
         </button>
         <button aria-label="上一首" onClick={props.onPrevious} disabled={props.disabled}><SkipBack size={16} fill="currentColor" /></button>
         <button className="play-button" aria-label={playing ? '暂停' : '播放'} onClick={props.onToggle} disabled={props.disabled}>
           {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
         </button>
         <button aria-label="下一首" onClick={props.onNext} disabled={props.disabled}><SkipForward size={16} fill="currentColor" /></button>
-        <button aria-label={repeatLabel} aria-pressed={props.repeatMode !== 'off'} className={props.repeatMode !== 'off' ? 'active' : ''} onClick={props.onToggleRepeat} disabled={props.disabled}>
-          {props.repeatMode === 'one' ? '①' : '↻'}
+        <button aria-label={repeatLabel} aria-pressed={props.repeatMode !== 'off'} className={props.repeatMode !== 'off' ? 'active' : ''} onClick={props.onToggleRepeat} disabled={props.disabled} title={`${repeatLabel}（点击切换）`}>
+          {/* Each mode gets its own glyph: 顺序播放 and 列表循环 previously shared "↻" and were only
+              distinguishable by the highlight colour, which reads as "the button did nothing". The
+              off state used to be a bare arrow, which read as "skip" — a list glyph says "order"
+              instead, and shuffle stays the only button about randomness. */}
+          {props.repeatMode === 'one' ? <Repeat1 size={15} /> : props.repeatMode === 'all' ? <Repeat size={15} /> : <ListOrdered size={15} />}
         </button>
       </div>
       <div className="progress">
@@ -201,7 +275,7 @@ export function PlayerBar(props: PlayerBarProps) {
           style={percentStyle(position, seekMax)}
           disabled={!duration} onChange={event => props.onSeekPreview(Number(event.target.value))}
           onPointerUp={props.onSeekCommit} onKeyUp={props.onSeekCommit} onBlur={props.onSeekCommit} />
-        <span>{formatDuration(duration)}</span>
+        <span>{formatTotal(duration)}</span>
       </div>
     </div>
     <div className="volume">
@@ -212,14 +286,98 @@ export function PlayerBar(props: PlayerBarProps) {
       <button className="pill-button" aria-label="播放队列" aria-pressed={props.queueOpen} onClick={props.onToggleQueue} disabled={!props.queueCount}>
         队列 {props.queueCount}
       </button>
+      <button className="icon-button" aria-label="迷你播放器" aria-pressed={props.miniOpen} onClick={props.onToggleMini} disabled={!track} title="迷你播放器（置顶小窗）">
+        <PictureInPicture2 size={16} />
+      </button>
+      <button className="icon-button" aria-label="桌面歌词" aria-pressed={props.desktopLyricsOpen} onClick={props.onToggleDesktopLyrics} disabled={!track} title="桌面歌词（置顶悬浮）">
+        <Captions size={16} />
+      </button>
       <button className="icon-button" aria-label={volume > 0 ? '静音' : '取消静音'} onClick={props.onToggleMute}>
         {volume > 0 ? <Volume2 size={16} /> : <VolumeX size={16} />}
       </button>
       <input aria-label="音量" type="range" min="0" max="1" step="0.01" value={volume}
         style={percentStyle(volume, 1)}
         onChange={event => props.onVolume(Number(event.target.value))} />
+      <PlayerMoreMenu {...props} />
     </div>
   </footer>;
+}
+
+const RATES = [0.75, 1, 1.25, 1.5, 2];
+// -1 is the "end of this track" mode: it cannot be expressed as a minute count because a podcast
+// episode can run past an hour, and cutting it mid-sentence is exactly what the timer is for.
+const SLEEP_OFF = 0;
+const SLEEP_END_OF_TRACK = -1;
+const SLEEP_CHOICES = [SLEEP_OFF, 15, 30, 60, SLEEP_END_OF_TRACK];
+
+function sleepLabelOf(minutes: number): string {
+  return minutes === SLEEP_OFF ? '关闭' : minutes === SLEEP_END_OF_TRACK ? '播完本曲' : `${minutes} 分钟`;
+}
+
+function formatSleep(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Playback speed and the sleep timer live here rather than in Settings because both are per-listen
+// decisions that a listener changes while music is playing.
+function PlayerMoreMenu(props: PlayerBarProps) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const box = anchor.current?.getBoundingClientRect();
+    if (box) setPos({ left: Math.max(12, Math.min(box.left - 210, window.innerWidth - 236)), bottom: window.innerHeight - box.top + 10 });
+    const close = (event: Event) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (anchor.current?.contains(target)) return;
+      if ((target as HTMLElement).closest?.('.more-menu')) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  const sleepLabel = props.sleepAfterTrack
+    ? '播完本曲暂停'
+    : props.sleepRemaining === null ? '未开启' : `剩 ${formatSleep(props.sleepRemaining)}`;
+  // A minute preset is not highlighted after it starts counting down (the label already shows the
+  // remainder), but the two non-countdown states always show which one is armed.
+  const sleepChoiceActive = (minutes: number) => minutes === SLEEP_OFF
+    ? !props.sleepAfterTrack && props.sleepRemaining === null
+    : minutes === SLEEP_END_OF_TRACK ? props.sleepAfterTrack : false;
+
+  return <>
+    <button ref={anchor} className="icon-button" aria-label="播放选项" aria-expanded={open}
+      aria-haspopup="menu" onClick={() => setOpen(value => !value)} title="播放选项">
+      <MoreHorizontal size={16} />
+    </button>
+    {open && pos && createPortal(<div className="more-menu" role="menu" aria-label="播放选项" style={{ left: pos.left, bottom: pos.bottom }}>
+      <div className="more-group more-rate">
+        <p className="more-head"><Gauge size={13} />播放速度</p>
+        <div className="more-chips">
+          {RATES.map(rate => <button key={rate} role="menuitemradio" aria-checked={props.playbackRate === rate}
+            className={`more-chip ${props.playbackRate === rate ? 'active' : ''}`}
+            onClick={() => props.onPlaybackRate(rate)}>{rate === 1 ? '正常' : `${rate}x`}</button>)}
+        </div>
+      </div>
+      <div className="more-group more-sleep">
+        <p className="more-head"><Moon size={13} />睡眠定时<span className="more-note">{sleepLabel}</span></p>
+        <div className="more-chips">
+          {SLEEP_CHOICES.map(minutes => <button key={minutes} role="menuitemradio"
+            aria-checked={sleepChoiceActive(minutes)}
+            className={`more-chip ${sleepChoiceActive(minutes) ? 'active' : ''}`}
+            onClick={() => { props.onSleepTimer(minutes); setOpen(false); }}>{sleepLabelOf(minutes)}</button>)}
+        </div>
+      </div>
+    </div>, document.body)}
+  </>;
 }
 
 const LYRIC_SOURCES: Record<string, string> = { huawei: '华为音乐', kugou: '酷狗音乐', lrclib: 'LRCLIB', local: '本地文件' };
@@ -270,7 +428,7 @@ export function LyricsPanel({ doc, loading, positionSeconds, offsetSeconds, onSe
           onWheel={() => setFollowing(false)} onTouchMove={() => setFollowing(false)} tabIndex={0}
           onKeyDown={event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(event.key)) setFollowing(false); }}>
         {lines.map((line, index) => <p key={`${index}-${line.text}`}
-          className={`${index === activeIndex ? 'active' : ''} ${line.translation ? 'has-translation' : ''}`}
+          className={`${index === activeIndex ? 'active' : ''} ${activeIndex >= 0 && index < activeIndex ? 'passed' : ''} ${line.translation ? 'has-translation' : ''}`}
           onClick={() => { if (line.timeMs !== null) onSeekTo(line.timeMs); }}>
           {line.text || '♪'}
           {line.translation && <span className="translation">{line.translation}</span>}
@@ -341,7 +499,7 @@ export function LyricsStage({
             ? <p className="stage-empty">{loading ? '正在读取歌词…' : doc ? '这首暂时没有歌词。' : '暂时无法读取歌词。'}</p>
             : <div className="stage-lines">
               {lines.map((line, index) => <button key={`${index}-${line.text}`}
-                className={`stage-line ${index === activeIndex ? 'active' : ''} ${line.timeMs === null ? 'no-time' : ''}`}
+                className={`stage-line ${index === activeIndex ? 'active' : ''} ${activeIndex >= 0 && index < activeIndex ? 'passed' : ''} ${line.timeMs === null ? 'no-time' : ''}`}
                 aria-label={line.text || '间奏'}
                 onClick={() => { if (line.timeMs !== null) onSeekTo(line.timeMs); }}>
                 <span>
@@ -372,7 +530,7 @@ export function LyricsStage({
           style={percentStyle(positionSeconds, seekMax)}
           disabled={!duration}
           onChange={event => onSeekSeconds(Number(event.target.value))} />
-        <span>{formatDuration(duration)}</span>
+        <span>{formatTotal(duration)}</span>
       </div>
       <div className="stage-tools">
         <button className={`stage-tool ${following ? 'on' : ''}`} aria-pressed={following} onClick={() => setFollowing(value => !value)}>

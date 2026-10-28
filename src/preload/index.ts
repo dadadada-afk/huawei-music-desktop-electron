@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { channels } from '../shared/channels';
-import type { DesktopApi } from '../shared/types';
+import type { AuxWindowKind, DesktopApi, LyricsAppearance, PlayerCommand, PlayerSnapshot } from '../shared/types';
 
 const api: DesktopApi = {
   auth: {
@@ -21,6 +21,7 @@ const api: DesktopApi = {
     playlistDetail: input => ipcRenderer.invoke(channels.musicPlaylistDetail, input),
     search: input => ipcRenderer.invoke(channels.musicSearch, input),
     history: () => ipcRenderer.invoke(channels.musicHistory),
+    discover: input => ipcRenderer.invoke(channels.musicDiscover, input),
     album: input => ipcRenderer.invoke(channels.musicAlbum, input),
     artist: input => ipcRenderer.invoke(channels.musicArtist, input),
     lyrics: input => ipcRenderer.invoke(channels.musicLyrics, input),
@@ -56,9 +57,36 @@ const api: DesktopApi = {
   app: { quit: () => ipcRenderer.invoke(channels.appQuit) },
   player: {
     onCommand: listener => {
-      const wrapped = (_event: Electron.IpcRendererEvent, command: 'play-pause' | 'next' | 'previous') => listener(command);
+      const wrapped = (_event: Electron.IpcRendererEvent, command: PlayerCommand) => listener(command);
       ipcRenderer.on(channels.playerCommand, wrapped);
       return () => ipcRenderer.removeListener(channels.playerCommand, wrapped);
+    },
+    broadcast: state => ipcRenderer.send(channels.playerBroadcast, state),
+    onState: listener => {
+      const wrapped = (_event: Electron.IpcRendererEvent, state: PlayerSnapshot | null) => listener(state);
+      ipcRenderer.on(channels.playerState, wrapped);
+      return () => ipcRenderer.removeListener(channels.playerState, wrapped);
+    },
+    control: command => ipcRenderer.send(channels.playerControl, command),
+    requestState: () => ipcRenderer.send(channels.playerRequestState),
+    seek: seconds => ipcRenderer.send(channels.playerSeek, seconds),
+    onSeek: listener => {
+      const wrapped = (_event: Electron.IpcRendererEvent, seconds: number) => listener(seconds);
+      ipcRenderer.on(channels.playerSeek, wrapped);
+      return () => ipcRenderer.removeListener(channels.playerSeek, wrapped);
+    },
+    toggleAux: kind => ipcRenderer.invoke(channels.windowToggleAux, { kind }),
+    onAuxState: listener => {
+      const wrapped = (_event: Electron.IpcRendererEvent, state: { kind: AuxWindowKind; open: boolean }) => listener(state);
+      ipcRenderer.on(channels.windowAuxState, wrapped);
+      return () => ipcRenderer.removeListener(channels.windowAuxState, wrapped);
+    },
+    showMain: () => ipcRenderer.send(channels.windowShowMain),
+    setLyricsAppearance: input => ipcRenderer.invoke(channels.windowLyricsAppearance, input),
+    onLyricsAppearance: listener => {
+      const wrapped = (_event: Electron.IpcRendererEvent, state: LyricsAppearance) => listener(state);
+      ipcRenderer.on(channels.lyricsAppearanceState, wrapped);
+      return () => ipcRenderer.removeListener(channels.lyricsAppearanceState, wrapped);
     },
   },
   onNotice: listener => {

@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, type BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { channels } from '../shared/channels';
 import { AuthManager, isAllowedSender } from './auth-manager';
 import { loadQueue, loadSettings, saveQueue, updateSettings } from './storage';
@@ -6,15 +6,33 @@ import { listSystemFonts } from './system-fonts';
 import { clearLyricsCache, lyricsCacheInfo, readLyricsFile, removeLocalLyrics, writeLocalLyrics } from './lyrics-cache';
 import { parseLyrics } from '../lyrics.mjs';
 import { fail, ok } from '../shared/result';
-import type { LyricsDoc, SavedQueue } from '../shared/types';
+import type { AuxWindowKind, LyricsAppearance, LyricsDoc, PlayerCommand, PlayerSnapshot, SavedQueue } from '../shared/types';
 
 export function registerIpc(
   window: BrowserWindow,
   auth: AuthManager,
-  hooks: { onCloseBehavior?: (value: 'quit' | 'tray') => void } = {},
+  hooks: {
+    onCloseBehavior?: (value: 'quit' | 'tray') => void;
+    onSnapshot?: (state: PlayerSnapshot) => void;
+    onCommand?: (command: PlayerCommand) => void;
+    onSeek?: (seconds: number) => void;
+    onToggleAux?: (kind: AuxWindowKind) => boolean;
+    onShowMain?: () => void;
+    /** Applies and persists the desktop lyric overlay appearance; returns the applied state. */
+    onLyricsAppearance?: (patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }) => LyricsAppearance | null;
+    /** Auxiliary windows ask for the current snapshot once their listener is attached. */
+    onRequestState?: (sender: Electron.WebContents) => void;
+  } = {},
 ): void {
   const guard = (event: Electron.IpcMainInvokeEvent) => {
     if (!isAllowedSender(window, event)) throw new Error('IPC 来源不受信任');
+  };
+  // Fire-and-forget channels come from either the main window or one of the helper windows, so the
+  // sender is matched by window identity instead of by frame URL.
+  const fromWindow = (event: Electron.IpcMainEvent) => {
+    const sender = event.sender;
+    if (sender === window.webContents) return 'main' as const;
+    return BrowserWindow.getAllWindows().some(candidate => candidate.webContents === sender) ? 'aux' as const : null;
   };
   const idOf = (value: unknown) => (typeof value === 'string' && value.trim() && value.length <= 200 ? value.trim() : null);
   for (const channel of Object.values(channels)) ipcMain.removeHandler(channel);
@@ -63,6 +81,11 @@ export function registerIpc(
     return auth.getSearch(query, start, limit);
   });
   ipcMain.handle(channels.musicHistory, async event => { guard(event); return auth.getRemoteHistory(); });
+  ipcMain.handle(channels.musicDiscover, async (event, input: { refresh?: boolean } = {}) => {
+    guard(event);
+    if (!refreshFlag(input?.refresh)) throw new Error('推荐刷新参数无效');
+    return auth.getDiscover(input.refresh ?? false);
+  });
   ipcMain.handle(channels.musicAlbum, async (event, input: { id?: string; start?: number; limit?: number } = {}) => {
     guard(event);
     const albumId = idOf(input?.id);
@@ -206,4 +229,67 @@ export function registerIpc(
   });
   ipcMain.handle(channels.windowMinimize, async event => { guard(event); window.minimize(); });
   ipcMain.handle(channels.appQuit, async event => { guard(event); app.quit(); });
+  // The main window publishes; every helper window consumes. Nothing here mutates playback, so a
+  // malformed or stale snapshot can only make a mirror look wrong until the next one arrives.
+  ipcMain.on(channels.playerBroadcast, (event, input: unknown) => {
+    if (fromWindow(event) !== 'main') return;
+    const state = sanitizeSnapshot(input);
+    if (state) hooks.onSnapshot?.(state);
+  });
+  ipcMain.on(channels.playerControl, (event, input: unknown) => {
+    if (fromWindow(event) !== 'aux') return;
+    if (!['play-pause', 'next', 'previous'].includes(input as string)) return;
+    hooks.onCommand?.(input as PlayerCommand);
+  });
+  ipcMain.on(channels.playerSeek, (event, input: unknown) => {
+    if (fromWindow(event) !== 'aux') return;
+    if (typeof input !== 'number' || !Number.isFinite(input) || input < 0 || input > 24 * 3600) return;
+    hooks.onSeek?.(input);
+  });
+  ipcMain.handle(channels.windowToggleAux, async (event, input: { kind?: string } = {}) => {
+    if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
+    if (input?.kind !== 'mini' && input?.kind !== 'lyrics') throw new Error('辅助窗口类型无效');
+    return hooks.onToggleAux?.(input.kind) ?? false;
+  });
+  ipcMain.handle(channels.windowLyricsAppearance, async (event, input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string } = {}) => {
+    if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
+    const patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string } = {};
+    if (typeof input?.opacity === 'number' && Number.isFinite(input.opacity)) patch.opacity = input.opacity;
+    if (typeof input?.locked === 'boolean') patch.locked = input.locked;
+    if (typeof input?.fontSize === 'number' && Number.isFinite(input.fontSize)) patch.fontSize = input.fontSize;
+    if (typeof input?.color === 'string') patch.color = input.color;
+    const applied = hooks.onLyricsAppearance?.(patch);
+    return applied ? ok(applied) : fail({ kind: 'unknown', message: '桌面歌词不可用', retryable: true });
+  });
+  ipcMain.on(channels.playerRequestState, event => {
+    if (fromWindow(event) !== 'aux') return;
+    hooks.onRequestState?.(event.sender);
+  });
+  ipcMain.on(channels.windowShowMain, event => {
+    if (fromWindow(event) !== 'aux') return;
+    hooks.onShowMain?.();
+  });
+}
+
+// A snapshot crosses from the renderer into three windows, so it is validated once here rather than
+// trusted by each consumer.
+function sanitizeSnapshot(input: unknown): PlayerSnapshot | null {
+  if (!input || typeof input !== 'object') return null;
+  const value = input as Record<string, unknown>;
+  const text = (item: unknown, max: number) => (typeof item === 'string' ? item.slice(0, max) : '');
+  const seconds = (item: unknown) => (typeof item === 'number' && Number.isFinite(item) && item >= 0 && item <= 24 * 3600 ? item : 0);
+  const lyrics = Array.isArray(value.lyrics)
+    ? value.lyrics.filter((line): line is string => typeof line === 'string').slice(0, 2000).map(line => line.slice(0, 400))
+    : [];
+  const lyricIndex = typeof value.lyricIndex === 'number' && Number.isInteger(value.lyricIndex) ? value.lyricIndex : -1;
+  return {
+    title: text(value.title, 200),
+    artists: text(value.artists, 200),
+    ...(typeof value.coverUrl === 'string' && value.coverUrl.startsWith('https://') ? { coverUrl: value.coverUrl.slice(0, 800) } : {}),
+    playing: value.playing === true,
+    position: seconds(value.position),
+    duration: seconds(value.duration),
+    lyrics,
+    lyricIndex: lyricIndex >= -1 && lyricIndex < lyrics.length ? lyricIndex : -1,
+  };
 }

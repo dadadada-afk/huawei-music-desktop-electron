@@ -3,7 +3,8 @@ import { Disc3, ListMusic, Mic2, Play, Search as SearchIcon, Trash2 } from 'luci
 import { Cover, PlaylistGrid, TrackTable, type TrackActions } from './components';
 import { mergeFavoritesPage } from './favorites-pagination.mjs';
 import type {
-  AccentName, AlbumDetail, AppearanceSettings, ArtistDetail, AppSettings, FontChoice, LyricsCacheInfo, Playlist, Result, SavedQueue, Track,
+  AccentName, AlbumDetail, AppearanceSettings, ArtistDetail, AppSettings, DiscoverFeed, FontChoice, LyricsCacheInfo,
+  Playlist, Result, SavedQueue, Track,
 } from '../shared/types';
 import { formatBytes } from '../shared/format.mjs';
 import { APP_DISPLAY_NAME } from '../shared/app-name.mjs';
@@ -18,6 +19,8 @@ export type LibraryContext = TrackActions & {
   closePlaylist(): void;
   setCloseBehavior(value: AppSettings['closeBehavior']): void;
   updateSettings(patch: Partial<AppSettings>): Promise<boolean>;
+  /** Applies desktop-lyric opacity/lock/size to the overlay window and persists it. */
+  setLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }): Promise<void>;
   settings: AppSettings | null;
   queue: SavedQueue | null;
   localHistory: Track[];
@@ -326,8 +329,90 @@ export function HistoryPage({ ctx }: { ctx: LibraryContext }) {
   </section>;
 }
 
-export function SettingsPage({ ctx }: { ctx: LibraryContext }) {
-  const settings = ctx.settings;
+// The daily list comes from the main process, which derives it from the account's own artists
+// because the official recommend endpoint rejects every derivable request body.
+export function DiscoverPage({ ctx }: { ctx: LibraryContext }) {
+  const requestId = useRef(0);
+  const [data, setData] = useState<DiscoverFeed | null>(null);
+  const [loading, setLoading] = useState(true);
+  // Collapsed by default: 30 rows of table is a lot of scroll before the playlists, and the hero
+  // already offers 播放全部.
+  const [openDaily, setOpenDaily] = useState(false);
+
+  async function load(refresh = false) {
+    const id = ++requestId.current;
+    setLoading(true);
+    const result = await ctx.run(() => window.desktop.music.discover({ refresh }), '读取今日推荐失败，请重试。');
+    if (id !== requestId.current) return;
+    if (result) setData(result);
+    setLoading(false);
+  }
+
+  useEffect(() => { void load(); return () => { requestId.current++; }; }, []);
+
+  if (!data) {
+    return <section className="library">
+      <div className="list-empty"><p>{loading ? '正在为你生成今日推荐…' : '今日推荐暂时不可用。'}</p></div>
+    </section>;
+  }
+
+  const daily = data.daily.tracks;
+  return <section className="discover">
+    <div className="discover-hero">
+      <div>
+        <p className="eyebrow">Today · {data.daily.day}</p>
+        <h2>今日推荐 {daily.length} 首</h2>
+        <p className="page-sub">{data.daily.source === 'library'
+          ? '按你收藏的歌手挑出还没收藏的歌，每天换一次顺序。'
+          : '素材不够时先拿你收藏的歌顶上，收藏更多歌手后会换成新歌。'}</p>
+      </div>
+      <div className="head-actions">
+        <button className="primary" onClick={() => daily.length && ctx.play(daily, 0)} disabled={!daily.length}>播放全部</button>
+        <button className="ghost" onClick={() => void load(true)} disabled={loading}>换一批</button>
+      </div>
+    </div>
+
+    {/* Playlists first: a 30-row table pushed them below the fold, so the page opened on a wall of
+        tracks and the recommendations nobody scrolled to never got seen. */}
+    {data.playlists.length > 0 && <>
+      <h3 className="section-title">精选歌单</h3>
+      <PlaylistGrid playlists={data.playlists} onOpen={ctx.openPlaylist} />
+    </>}
+
+    {data.artists.length > 0 && <>
+      <h3 className="section-title">你的常听歌手</h3>
+      <div className="artist-grid">
+        {data.artists.map(artist => <button key={artist.id} className="artist-card" onClick={() => ctx.openArtist(artist.id)}>
+          <span className="artist-art"><Cover src={artist.coverUrl} icon={<Mic2 size={22} />} /></span>
+          <strong>{artist.name}</strong>
+          <small>{artist.count} 首收藏</small>
+        </button>)}
+      </div>
+    </>}
+
+    <div className="section-title-row">
+      <h3 className="section-title">今日推荐歌曲</h3>
+      <button className="ghost small" aria-expanded={openDaily}
+        onClick={() => setOpenDaily(value => !value)}>
+        {openDaily ? '收起' : `展开 ${daily.length} 首`}
+      </button>
+    </div>
+    {openDaily && <TrackTable tracks={daily} actions={ctx} emptyText="收藏一些歌曲后，这里会出现为你挑的歌。" />}
+  </section>;
+}
+
+// The overlay's default warm white plus the tints that keep contrast over both bright and dark
+// desktops. Anything else goes through the colour input next to them.
+const LYRIC_COLORS = [
+  { value: '#ffe9eb', label: '暖白' },
+  { value: '#ffffff', label: '纯白' },
+  { value: '#c8202e', label: '主题红' },
+  { value: '#3b82f6', label: '蓝' },
+  { value: '#22c55e', label: '绿' },
+  { value: '#f59e0b', label: '琥珀' },
+];
+
+export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings = ctx.settings;
   const [tab, setTab] = useState<'playback' | 'appearance' | 'about'>('playback');
   const appearance = settings?.appearance;
   // Optimistic local copy: dragging a slider must repaint immediately instead of waiting for the
@@ -345,6 +430,12 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {
   const fontFamily = shown.fontFamily;
   const customAccent = shown.customAccent;
   const customFont = shown.customFont;
+  // The overlay appearance is owned by the main process, not by `appearance`, so it is read from
+  // settings directly and written through the player channel that applies it to the live window.
+  const lyricsOpacity = ctx.settings?.lyricsOpacity ?? 1;
+  const lyricsLocked = !!ctx.settings?.lyricsLocked;
+  const lyricsFontSize = ctx.settings?.lyricsFontSize ?? 30;
+  const lyricsColor = ctx.settings?.lyricsColor ?? '#ffe9eb';
 
   // Reading installed fonts needs a user gesture and the Electron font-access permission.
   const [lyricsCache, setLyricsCache] = useState<LyricsCacheInfo | null>(null);
@@ -359,6 +450,7 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {
 
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
   const [fontQuery, setFontQuery] = useState('');
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [fontError, setFontError] = useState('');
   async function loadSystemFonts() {
     setFontError('');
@@ -397,10 +489,10 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {
     <div className="settings-panel">
       {tab === 'playback' && <div className="settings-form">
         <label>
-          <span>关闭窗口时</span>
-          <select aria-label="关闭窗口时行为" value={settings?.closeBehavior ?? 'quit'} onChange={event => ctx.setCloseBehavior(event.target.value as AppSettings['closeBehavior'])}>
+          <span>关闭或最小化窗口时</span>
+          <select aria-label="关闭或最小化窗口时行为" value={settings?.closeBehavior ?? 'quit'} onChange={event => ctx.setCloseBehavior(event.target.value as AppSettings['closeBehavior'])}>
             <option value="quit">退出程序</option>
-            <option value="tray">最小化到托盘</option>
+            <option value="tray">收进托盘，点托盘图标恢复</option>
           </select>
         </label>
         <label>
@@ -501,21 +593,73 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {
               <button key={key} className={fontFamily === key ? 'active' : ''} aria-pressed={fontFamily === key}
                 onClick={() => updateAppearance({ fontFamily: key })}>{label}</button>)}
             <button className={fontFamily === 'custom' ? 'active' : ''} aria-pressed={fontFamily === 'custom'}
-              onClick={() => void loadSystemFonts()}>系统字体…</button>
+              aria-expanded={fontPickerOpen}
+              onClick={() => { setFontPickerOpen(open => !open); if (!systemFonts.length) void loadSystemFonts(); }}>
+              系统字体…
+            </button>
           </div>
           {fontFamily === 'custom' && customFont && <p className="hint">当前字体：<strong>{customFont}</strong></p>}
           {fontError && <p className="hint">{fontError}</p>}
-          {systemFonts.length > 0 && <div className="font-picker">
-            <input aria-label="搜索系统字体" placeholder={`搜索已安装字体（${systemFonts.length} 个）`} value={fontQuery}
-              onChange={event => setFontQuery(event.target.value)} />
+          {/* The list is long enough (hundreds of families) that leaving it expanded pushed the rest
+              of the appearance tab off screen, so it opens on demand and closes on pick or Escape. */}
+          {fontPickerOpen && <div className="font-picker">
+            <div className="font-picker-head">
+              <input aria-label="搜索系统字体" placeholder={`搜索已安装字体（${systemFonts.length} 个）`} value={fontQuery}
+                autoFocus onChange={event => setFontQuery(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Escape') setFontPickerOpen(false); }} />
+              <button className="ghost" onClick={() => setFontPickerOpen(false)}>收起</button>
+            </div>
             <div className="font-list" role="listbox" aria-label="已安装字体">
               {visibleFonts.length
                 ? visibleFonts.map(name => <button key={name} role="option" aria-selected={customFont === name}
                   className={customFont === name ? 'active' : ''} style={{ fontFamily: `"${name}"` }}
-                  onClick={() => updateAppearance({ fontFamily: 'custom', customFont: name })}>{name}</button>)
-                : <p className="font-list-empty">没有匹配的字体。</p>}
+                  onClick={() => { updateAppearance({ fontFamily: 'custom', customFont: name }); setFontPickerOpen(false); }}>{name}</button>)
+                : <p className="font-list-empty">{systemFonts.length ? '没有匹配的字体。' : '正在读取系统字体…'}</p>}
             </div>
           </div>}
+        </div>
+        <div className="appearance-field">
+          <div className="appearance-label">
+            <span>桌面歌词</span>
+            <span className="hint">悬浮在其他窗口之上的歌词条</span>
+          </div>
+          <label className="appearance-slider">
+            <span>透明度<small>{Math.round(lyricsOpacity * 100)}%</small></span>
+            <input type="range" aria-label="桌面歌词透明度" min="0.3" max="1" step="0.05" value={lyricsOpacity}
+              style={{ '--pct': `${Math.round(((lyricsOpacity - 0.3) / 0.7) * 100)}%` } as CSSProperties}
+              onChange={event => void ctx.setLyricsAppearance({ opacity: Number(event.target.value) })} />
+          </label>
+          <label className="appearance-slider">
+            <span>字号<small>{lyricsFontSize}px</small></span>
+            <input type="range" aria-label="桌面歌词字号" min="18" max="64" step="2" value={lyricsFontSize}
+              style={{ '--pct': `${Math.round(((lyricsFontSize - 18) / 46) * 100)}%` } as CSSProperties}
+              onChange={event => void ctx.setLyricsAppearance({ fontSize: Number(event.target.value) })} />
+          </label>
+          {/* Presets cover the tints people actually pick (warm, white, accent, cool); the colour
+              input stays for anything else, and both feed the same hex value the main process
+              validates before it reaches the overlay's stylesheet. */}
+          <div className="appearance-label">
+            <span>歌词颜色<small>{lyricsColor}</small></span>
+            <span className="hint">当前唱到的那一句</span>
+          </div>
+          <div className="lyrics-colors">
+            {LYRIC_COLORS.map(option => <button key={option.value} type="button"
+              className={`lyrics-color ${lyricsColor.toLowerCase() === option.value ? 'active' : ''}`}
+              style={{ background: option.value }} title={option.label}
+              aria-label={`歌词颜色 ${option.label}`} aria-pressed={lyricsColor.toLowerCase() === option.value}
+              onClick={() => void ctx.setLyricsAppearance({ color: option.value })} />)}
+            <input type="color" className="lyrics-color-picker" aria-label="自定义歌词颜色"
+              value={/^#[0-9a-f]{6}$/i.test(lyricsColor) ? lyricsColor : '#ffe9eb'}
+              onChange={event => void ctx.setLyricsAppearance({ color: event.target.value })} />
+          </div>
+          {/* A locked overlay ignores the mouse, so this switch is the only way back — the overlay's
+              own toolbar becomes unreachable the moment it is locked. */}
+          <label className="settings-toggle">
+            <span>锁定<small>鼠标穿透，不挡桌面操作</small></span>
+            <input type="checkbox" aria-label="锁定桌面歌词" checked={lyricsLocked}
+              onChange={event => void ctx.setLyricsAppearance({ locked: event.target.checked })} />
+          </label>
+          <p className="hint">全局快捷键 <strong>Ctrl + Alt + L</strong> 可随时锁定 / 解锁桌面歌词。</p>
         </div>
         <button className="ghost" onClick={() => updateAppearance({ accent: 'red', panelOpacity: 1, cornerRadius: 11, fontScale: 1, fontFamily: 'sans' })}>恢复默认外观</button>
       </div>}

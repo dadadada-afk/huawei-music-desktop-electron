@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  Heart, Headphones, History, ListMusic, LogIn, LogOut, Search, Settings as SettingsIcon,
+  ChevronLeft, ChevronRight, ChevronUp, Heart, Headphones, History, ListMusic, LogIn, LogOut, Search,
+  Settings as SettingsIcon, Sparkles,
 } from 'lucide-react';
 import { LyricsPanel, LyricsStage, PlayerBar, QueuePanel } from './components';
 import {
-  AlbumPage, ArtistPage, HistoryPage, PlaylistsPage, PlaylistDetailPage, SearchPage,
+  AlbumPage, ArtistPage, DiscoverPage, HistoryPage, PlaylistsPage, PlaylistDetailPage, SearchPage,
   SettingsPage, type LibraryContext,
 } from './pages';
 import { FavoritesPage } from './favorites-page';
 import { APP_BRAND_LABEL } from '../shared/app-name.mjs';
+import { activeLyricIndex } from '../lyrics.mjs';
 import {
   autosaveDelay, buildShuffleOrder, historyReportDecision, onEndedAction, popPlayHistory, pushPlayHistory, stepCursor,
 } from './player.mjs';
@@ -19,23 +22,25 @@ import type {
 } from '../shared/types';
 
 type View =
-  | { name: 'favorites' } | { name: 'playlists' } | { name: 'search' } | { name: 'history' } | { name: 'settings' }
+  | { name: 'discover' } | { name: 'favorites' } | { name: 'playlists' } | { name: 'search' }
+  | { name: 'history' } | { name: 'settings' }
   | { name: 'playlist'; playlist: Playlist }
   | { name: 'album'; albumId: string }
   | { name: 'artist'; artistId: string };
 
 const VIEW_TITLES: Record<View['name'], string> = {
-  favorites: '我的收藏', playlists: '我的歌单', playlist: '歌单详情', search: '搜索',
+  discover: '发现', favorites: '我的收藏', playlists: '我的歌单', playlist: '歌单详情', search: '搜索',
   history: '播放历史', settings: '设置', album: '专辑', artist: '歌手',
 };
 
 const VIEW_EYEBROWS: Record<View['name'], string> = {
-  favorites: 'Library', playlists: 'Collections', playlist: 'Collection', search: 'Search',
+  discover: 'Discover', favorites: 'Library', playlists: 'Collections', playlist: 'Collection', search: 'Search',
   history: 'History', settings: 'Preferences', album: 'Album', artist: 'Artist',
 };
 
 const NAV_ICONS = {
-  favorites: Heart, playlists: ListMusic, search: Search, history: History, settings: SettingsIcon,
+  discover: Sparkles, favorites: Heart, playlists: ListMusic, search: Search, history: History,
+  settings: SettingsIcon,
 };
 
 // Runtime tint map: the CSS keeps red as its default so the first paint is already correct.
@@ -100,7 +105,7 @@ export function App() {
   const [message, setMessage] = useState('正在检查登录状态…');
   const [busy, setBusy] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [view, setView] = useState<View>({ name: 'favorites' });
+  const [view, setView] = useState<View>({ name: 'discover' });
   const [queue, setQueue] = useState<Track[]>([]);
   const [queueReady, setQueueReady] = useState(false);
   const [cursor, setCursor] = useState(-1);
@@ -111,6 +116,8 @@ export function App() {
   const [actualQuality, setActualQuality] = useState<'standard' | 'lossless' | 'unknown'>('unknown');
   const [lyrics, setLyrics] = useState<LyricsDoc | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  // Declared up here because the lyric loader below needs it to decide whether to fetch at all.
+  const [auxOpen, setAuxOpen] = useState<Record<'mini' | 'lyrics', boolean>>({ mini: false, lyrics: false });
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
   const [lyricOffset, setLyricOffset] = useState(0);
@@ -127,7 +134,19 @@ export function App() {
   const [volume, setVolume] = useState(0.85);
   const [quality, setQuality] = useState<'standard' | 'lossless'>('standard');
   const [repeatMode, setRepeatMode] = useState<AppSettings['repeatMode']>('off');
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
+  const footRef = useRef<HTMLButtonElement>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const [shuffle, setShuffle] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  // Sleep timer is a session convenience, not a stored preference: it is a deadline, so restoring a
+  // stale one after a restart would either fire immediately or never.
+  const [sleepDeadline, setSleepDeadline] = useState<number | null>(null);
+  const [sleepRemaining, setSleepRemaining] = useState(0);
+  // The "stop after this track" variant has no deadline, so it needs its own flag; the audio
+  // element's 'ended' handler reads the ref because that listener is registered once.
+  const [sleepAfterTrack, setSleepAfterTrack] = useState(false);
 
   const audio = useRef<HTMLAudioElement | null>(null);
   const playbackGeneration = useRef(0);
@@ -143,6 +162,8 @@ export function App() {
   const repeatRef = useRef<AppSettings['repeatMode']>('off');
   const qualityRef = useRef<'standard' | 'lossless'>('standard');
   const volumeRef = useRef(0.85);
+  const playbackRateRef = useRef(1);
+  const sleepAfterTrackRef = useRef(false);
   const syncHistoryRef = useRef(true);
   const listenSeconds = useRef(0);
   const lastListenAt = useRef(0);
@@ -177,6 +198,12 @@ export function App() {
       else if (command === 'next') playCommand.current.next();
       else playCommand.current.previous();
     });
+    const unsubscribeSeek = window.desktop.player.onSeek(seconds => {      const element = audio.current;
+      if (!element || !Number.isFinite(seconds)) return;
+      const limit = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : seconds;
+      element.currentTime = Math.max(0, Math.min(limit, seconds));
+      setPosition(element.currentTime);
+    });
     void (async () => {
       const [authResult, settingsResult, queueResult] = await Promise.all([
         window.desktop.auth.status().catch(() => null),
@@ -207,7 +234,7 @@ export function App() {
       setQueueReady(true);
     })();
     return () => {
-      unsubscribeProgress(); unsubscribeNotice(); unsubscribeCommand();
+      unsubscribeProgress(); unsubscribeNotice(); unsubscribeCommand(); unsubscribeSeek();
       window.clearTimeout(saveTimer.current); window.clearTimeout(positionTimer.current);
     };
   }, []);
@@ -215,6 +242,8 @@ export function App() {
   useEffect(() => {
     audio.current = new Audio();
     audio.current.volume = volumeRef.current;
+    // A fresh element starts at 1x, so the chosen speed has to be reapplied on every source swap.
+    audio.current.playbackRate = playbackRateRef.current;
     const element = audio.current;
     const isCurrentSource = () => activeAudioGeneration.current === playbackGeneration.current
       && !!activeAudioSource.current && element.src === activeAudioSource.current;
@@ -259,6 +288,14 @@ export function App() {
       reportHistoryRef.current();
       activeAudioSource.current = '';
       setBuffering(false); setPlaying(false);
+      // "Stop after this track" ends playback here rather than advancing: the point is to fall
+      // asleep at the end of what is playing, not one song later.
+      if (sleepAfterTrackRef.current) {
+        sleepAfterTrackRef.current = false;
+        setSleepAfterTrack(false);
+        setMessage('睡眠定时：当前歌曲已播完，已暂停播放。');
+        return;
+      }
       const step = onEndedAction(cursorRef.current, order.current.length, repeatRef.current);
       if (!step.stopped) void playAtRef.current(step.cursor);
     };
@@ -328,13 +365,14 @@ export function App() {
   useEffect(() => {
     if (!('mediaSession' in navigator) || !duration) return;
     try {
-      navigator.mediaSession.setPositionState({ duration, position: Math.min(position, duration), playbackRate: 1 });
+      navigator.mediaSession.setPositionState({ duration, position: Math.min(position, duration), playbackRate });
     } catch { /* Position state is best effort. */ }
-  }, [position, duration]);
+  }, [position, duration, playbackRate]);
 
-  // Lyrics load once per track while either surface (drawer or full stage) is visible.
+  // Lyrics load once per track while any surface that shows them is visible. The desktop-lyrics
+  // window counts as one: it is a mirror, so it can only display what this window has fetched.
   useEffect(() => {
-    if (!lyricsOpen && !stageOpen) return;
+    if (!lyricsOpen && !stageOpen && !auxOpen.lyrics) return;
     const trackId = currentTrack?.id;
     if (!trackId) { setLyrics(null); return; }
     setLyricOffset(readLyricOffset(trackId));
@@ -364,7 +402,7 @@ export function App() {
       setLyrics(null); setLyricsLoading(false);
     });
     return () => { cancelled = true; };
-  }, [lyricsOpen, stageOpen, currentTrack?.id, lyricRevision]);
+  }, [lyricsOpen, stageOpen, auxOpen.lyrics, currentTrack?.id, lyricRevision]);
 
   async function importLocalLyrics() {
     const trackId = currentTrack?.id;
@@ -399,9 +437,47 @@ export function App() {
     repeatRef.current = next.repeatMode;
     setShuffle(next.shuffle);
     syncHistoryRef.current = next.syncHistory;
+    // The audio element may not exist yet on the first call; the ref is what every later source
+    // swap reads, so restoring it here is enough for the speed to survive a restart. The guard
+    // keeps this idempotent: changePlaybackRate already applied the value before persisting it.
+    setPlaybackRate(next.playbackRate);
+    playbackRateRef.current = next.playbackRate;
+    if (audio.current && audio.current.playbackRate !== next.playbackRate) audio.current.playbackRate = next.playbackRate;
   }
 
   function identityOrder(count: number): number[] { return Array.from({ length: count }, (_, index) => index); }
+
+  /** Anchors the portalled account menu to the sidebar foot, keeping it inside the window. */
+  function toggleAccountMenu() {
+    if (accountMenuOpen) { setAccountMenuOpen(false); return; }
+    const rect = footRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenuPos({
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 190)),
+      bottom: Math.max(8, window.innerHeight - rect.top + 6),
+    });
+    setAccountMenuOpen(true);
+  }
+
+  // Closes the account menu on any click that is not inside it or on its own trigger. This replaces
+  // the full-screen backdrop, which used to cover the sidebar and eat the collapse-toggle click.
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (accountMenuRef.current?.contains(target)) return;
+      if (footRef.current?.contains(target)) return;
+      setAccountMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setAccountMenuOpen(false); };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   function recordLocalHistory(track: Track) {
     setLocalHistory(previous => {
@@ -446,6 +522,8 @@ export function App() {
     activeAudioSource.current = new URL(result.data.url).href;
     activeAudioGeneration.current = generation;
     audio.current.src = activeAudioSource.current;
+    // Some Chromium builds reset the rate when a new source is loaded, so it is reapplied here too.
+    audio.current.playbackRate = playbackRateRef.current;
     audio.current.load();
     setActualQuality(result.data.actualQuality);
     try {
@@ -605,6 +683,96 @@ export function App() {
     changeVolume(volume > 0 ? 0 : (lastAudibleVolume.current || 0.85));
   }
 
+  function changePlaybackRate(rate: number) {
+    playbackRateRef.current = rate;
+    setPlaybackRate(rate);
+    if (audio.current) audio.current.playbackRate = rate;
+    void updateSettings({ playbackRate: rate });
+    setMessage(rate === 1 ? '恢复正常速度。' : `播放速度 ${rate}x。`);
+  }
+
+  function setSleepTimer(minutes: number) {
+    if (minutes === -1) {
+      setSleepDeadline(null); setSleepRemaining(0);
+      sleepAfterTrackRef.current = true; setSleepAfterTrack(true);
+      setMessage('将在当前歌曲播完后暂停。');
+      return;
+    }
+    sleepAfterTrackRef.current = false; setSleepAfterTrack(false);
+    if (!minutes) { setSleepDeadline(null); setSleepRemaining(0); setMessage('已取消睡眠定时。'); return; }
+    setSleepDeadline(Date.now() + minutes * 60_000);
+    setSleepRemaining(minutes * 60);
+    setMessage(`将在 ${minutes} 分钟后暂停播放。`);
+  }
+
+  // One interval drives both the countdown label and the expiry, so the timer cannot drift out of
+  // sync with what the menu shows.
+  useEffect(() => {
+    if (sleepDeadline === null) return;
+    const tick = () => {
+      const left = Math.max(0, Math.round((sleepDeadline - Date.now()) / 1000));
+      setSleepRemaining(left);
+      if (left > 0) return;
+      setSleepDeadline(null);
+      audio.current?.pause();
+      setMessage('睡眠定时结束，已暂停播放。');
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [sleepDeadline]);
+
+  // Shortcuts every desktop player shares. Text fields are skipped so typing a search query never
+  // starts playback, and the audio element is read directly here because this listener is attached
+  // once — a closure over `duration` would still see the first render's zero.
+  useEffect(() => {
+    // Any focusable control keeps its own arrow/space behaviour: a range input steps by one notch and
+    // a select opens its list, so a global shortcut here would break the very widgets it sits next to.
+    const isFormControl = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null;
+      if (!element) return false;
+      if (element.isContentEditable) return true;
+      return element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.tagName === 'SELECT';
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey) return;
+      const withCommand = event.ctrlKey || event.metaKey;
+      if (withCommand && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setView({ name: 'search' });
+        // The page mounts after this handler returns, so focus is queued behind the render.
+        window.setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="搜索歌曲"]')?.focus(), 0);
+        return;
+      }
+      const element = audio.current;
+      if (event.key === ' ') {
+        // A focused button already treats Space as "press me"; hijacking it would break the keyboard.
+        if (isFormControl(event.target) || (event.target as HTMLElement | null)?.tagName === 'BUTTON') return;
+        event.preventDefault();
+        playCommand.current.toggle();
+        return;
+      }
+      if (isFormControl(event.target)) return;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        const forward = event.key === 'ArrowRight';
+        if (withCommand) { if (forward) playCommand.current.next(); else playCommand.current.previous(); return; }
+        if (!element || !Number.isFinite(element.duration) || element.duration <= 0) return;
+        element.currentTime = Math.max(0, Math.min(element.duration, element.currentTime + (forward ? 5 : -5)));
+        lastListenAt.current = element.currentTime;
+        setPosition(element.currentTime);
+        return;
+      }
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        const step = event.key === 'ArrowUp' ? 0.05 : -0.05;
+        changeVolume(Math.max(0, Math.min(1, volumeRef.current + step)));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   function favoriteOf(trackId: string): boolean | undefined { return knownFavoriteIds.has(trackId) ? favoriteIds.has(trackId) : undefined; }
   function setFavoriteState(trackId: string, favorite: boolean) {
     setKnownFavoriteIds(previous => new Set(previous).add(trackId));
@@ -693,12 +861,70 @@ export function App() {
   function openPlaylist(playlist: Playlist) { setView({ name: 'playlist', playlist }); }
   function closePlaylist() { setView({ name: 'playlists' }); }
 
+  // The helper windows live in the main process, so their open state is read back from the invoke
+  // result rather than assumed; a failed open must not leave the button stuck in the pressed state.
+  async function toggleAux(kind: 'mini' | 'lyrics') {
+    try {
+      const open = await window.desktop.player.toggleAux(kind);
+      setAuxOpen(current => ({ ...current, [kind]: open }));
+    } catch {
+      setMessage('辅助窗口打开失败，请重试。');
+    }
+  }
+
+  // The tray menu can open a helper window without this component asking, so the open state is
+  // pushed from the main process instead of being tracked only from local clicks.
+  useEffect(() => window.desktop.player.onAuxState(state => {
+    setAuxOpen(current => (current[state.kind] === state.open ? current : { ...current, [state.kind]: state.open }));
+  }), []);
+
+  // The helper windows are pure mirrors: the main window is the only publisher, and it publishes on
+  // every state change and time update, so the receivers never poll.
+  useEffect(() => {
+    const lines = lyrics?.lines ?? [];
+    const active = lyrics?.synced && lines.length ? activeLyricIndex(lines, position * 1000) : -1;
+    window.desktop.player.broadcast({
+      title: currentTrack?.title ?? '',
+      artists: currentTrack?.artists.map(artist => artist.name).join(' / ') ?? '',
+      ...(currentTrack?.coverUrl ? { coverUrl: currentTrack.coverUrl } : {}),
+      playing, position, duration,
+      lyrics: lines.map(line => line.text),
+      lyricIndex: typeof active === 'number' ? active : -1,
+    });
+  }, [currentTrack, playing, position, duration, lyrics]);
+
+  // Both insertion helpers keep `order` a permutation of queue indexes: shifting every later entry
+  // by one is what keeps the currently playing track playing instead of jumping elsewhere.
+  function playNext(track: Track) {
+    const at = cursorRef.current;
+    const playingIndex = at >= 0 && at < order.current.length ? order.current[at] : -1;
+    const insertAt = playingIndex < 0 ? queueRef.current.length : playingIndex + 1;
+    const nextQueue = [...queueRef.current];
+    nextQueue.splice(insertAt, 0, track);
+    const nextOrder = order.current.map(index => (index >= insertAt ? index + 1 : index));
+    nextOrder.splice(at < 0 ? nextOrder.length : at + 1, 0, insertAt);
+    queueRef.current = nextQueue;
+    order.current = nextOrder;
+    setQueue(nextQueue);
+    setMessage(`已排到下一首：${track.title}`);
+  }
+
+  function enqueue(track: Track) {
+    const insertAt = queueRef.current.length;
+    queueRef.current = [...queueRef.current, track];
+    order.current = [...order.current, insertAt];
+    setQueue(queueRef.current);
+    setMessage(`已加入队列：${track.title}`);
+  }
+
   const ctx: LibraryContext = {
     busy, setBusy, notice, run, setFavoriteState, updateSettings,
     currentTrackId: currentTrack?.id ?? null,
     playing,
     favoriteOf,
     play,
+    playNext,
+    enqueue,
     toggleFavorite,
     openAlbum: albumId => setView({ name: 'album', albumId }),
     openArtist: artistId => setView({ name: 'artist', artistId }),
@@ -712,9 +938,18 @@ export function App() {
     },
     settings, queue: { tracks: queue, index: cursor >= 0 && cursor < order.current.length ? order.current[cursor] : 0, positionSeconds: position },
     localHistory, favoriteChange,
+    setLyricsAppearance: patch => window.desktop.player.setLyricsAppearance(patch).then(result => {
+      // Apply what the main process actually accepted instead of re-reading settings: the write is
+      // fire-and-forget, so an immediate read raced it and the settings page kept showing the old
+      // colour while the overlay had already changed.
+      if (!result.ok) { setMessage('桌面歌词设置未生效，请重试。'); return; }
+      const applied = result.data;
+      setSettings(prev => prev ? { ...prev, lyricsOpacity: applied.opacity, lyricsLocked: applied.locked, lyricsFontSize: applied.fontSize, lyricsColor: applied.color } : prev);
+    }).catch(() => setMessage('桌面歌词设置未生效，请重试。')),
   };
 
   const navItems: { key: keyof typeof NAV_ICONS; label: string }[] = [
+    { key: 'discover', label: '发现' },
     { key: 'favorites', label: '我的收藏' },
     { key: 'playlists', label: '我的歌单' },
     { key: 'search', label: '搜索' },
@@ -724,6 +959,7 @@ export function App() {
 
   function renderPage() {
     switch (view.name) {
+      case 'discover': return <DiscoverPage ctx={ctx} />;
       case 'favorites': return null;
       case 'playlists': return <PlaylistsPage ctx={ctx} />;
       case 'playlist': return <PlaylistDetailPage ctx={ctx} playlist={view.playlist} />;
@@ -737,17 +973,29 @@ export function App() {
 
   const panelOpen = lyricsOpen || queueOpen;
   const viewHint =
-    view.name === 'favorites' ? '收藏的全部歌曲，向下滚动自动加载'
+    view.name === 'discover' ? '每天从你收藏的歌手换一批歌'
+      : view.name === 'favorites' ? '收藏的全部歌曲，向下滚动自动加载'
       : view.name === 'playlists' ? '自建、收藏与榜单'
         : view.name === 'search' ? '按歌名或艺人查找'
           : view.name === 'history' ? '本机记录与华为服务端记录'
             : view.name === 'settings' ? '播放、界面与隐私偏好'
               : '';
-  return <div className={`app-shell ${panelOpen ? 'has-panel' : ''}`}>
+  const sidebarCollapsed = !!settings?.sidebarCollapsed;
+  return <div className={`app-shell ${panelOpen ? 'has-panel' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
+    <div className="titlebar-drag" aria-hidden="true" />
     <aside className="sidebar">
-      <div className="brand">
-        <span className="brand-mark"><Headphones size={19} /></span>
-        <span>{APP_BRAND_LABEL}</span>
+      <div className="brand-row">
+        <div className="brand">
+          <span className="brand-mark"><Headphones size={19} /></span>
+          <span className="brand-name">{APP_BRAND_LABEL}</span>
+        </div>
+        <button className="sidebar-toggle" type="button"
+          aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          onClick={() => void updateSettings({ sidebarCollapsed: !sidebarCollapsed })}>
+          {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
       </div>
       <div className="nav-label">音乐库</div>
       {navItems.map(item => {
@@ -759,9 +1007,50 @@ export function App() {
           <Icon size={16} /><span>{item.label}</span>
         </button>;
       })}
-      <div className="sidebar-foot">
-        <div className={`status-dot ${status?.authenticated ? '' : 'off'}`} />
-        <span>{status?.authenticated ? '音乐会话已连接' : '未登录'}</span>
+      {/* The account entry lives here, where desktop players put it, so signing in never depends on
+          finding a button in the page header. Signing out is destructive (a fresh QR scan), so it is
+          behind this menu rather than being the default action of the row itself. The menu is
+          portalled to the body: the collapsed sidebar is a 76px rail with `overflow: auto`, which
+          would otherwise clip a menu that is wider than the rail. */}
+      <div className="sidebar-account">
+        <button className="sidebar-foot" ref={footRef}
+          onClick={() => status?.authenticated ? toggleAccountMenu() : void login()}
+          disabled={busy}
+          // The visible label is a status line, which is not what the button does. Naming it by its
+          // action keeps it addressable as "扫码登录" / "账号菜单" wherever the entry point moves to.
+          aria-label={status?.authenticated ? '账号菜单' : '扫码登录'}
+          aria-haspopup={status?.authenticated ? 'menu' : undefined}
+          aria-expanded={status?.authenticated ? accountMenuOpen : undefined}
+          title={status?.authenticated ? '账号' : '扫码登录'}>
+          <span className={`status-dot ${status?.authenticated ? '' : 'off'}`} />
+          <span className="foot-label">{status?.authenticated
+            ? (status.accountLabel ?? status.displayName ?? '音乐会话已连接')
+            : '未登录 · 点此登录'}</span>
+          {status?.authenticated
+            ? <ChevronUp size={13} className="foot-icon" />
+            : <LogIn size={13} className="foot-icon" />}
+        </button>
+        {accountMenuOpen && menuPos && createPortal(<>
+          {/* No full-screen backdrop: it sat above the sidebar and swallowed clicks meant for the
+              collapse toggle. A window-level pointerdown listener closes the menu instead, so the
+              rest of the window stays clickable while the menu is open. */}
+          <div className="account-menu" role="menu" aria-label="账号" ref={accountMenuRef}
+            style={{ left: menuPos.left, bottom: menuPos.bottom }}>
+            <p className="account-id" title="账号标识已脱敏，只显示后四位">
+              {status?.displayName ?? '华为账号'}
+              {status?.accountLabel && <span>{status.accountLabel}</span>}
+            </p>
+            <button role="menuitem" onClick={() => { setAccountMenuOpen(false); setView({ name: 'settings' }); }}>
+              <SettingsIcon size={14} />账号与设置
+            </button>
+            <button role="menuitem" disabled={busy} onClick={() => { setAccountMenuOpen(false); void login(); }}>
+              <LogIn size={14} />重新登录
+            </button>
+            <button role="menuitem" className="danger" disabled={busy} onClick={() => { setAccountMenuOpen(false); void logout(); }}>
+              <LogOut size={14} />退出登录
+            </button>
+          </div>
+        </>, document.body)}
       </div>
     </aside>
     <main className="main-content">
@@ -770,14 +1059,6 @@ export function App() {
           <p className="eyebrow">{VIEW_EYEBROWS[view.name]}</p>
           <h1>{VIEW_TITLES[view.name]}</h1>
           <p className="page-sub">{status?.authenticated || view.name === 'settings' ? viewHint : '登录后即可浏览你的音乐库'}</p>
-        </div>
-        <div className="actions">
-          {status?.authenticated
-            ? <>
-              <button className="ghost" onClick={login} disabled={busy}><LogIn size={14} />重新登录</button>
-              <button className="ghost danger" onClick={logout} disabled={busy}><LogOut size={14} />退出</button>
-            </>
-            : <button className="primary" onClick={login} disabled={busy}><LogIn size={14} />扫码登录</button>}
         </div>
       </header>
       <div className="notice" role="status" aria-live="polite">{message}{status?.notice && <span> · {status.notice}</span>}</div>
@@ -844,6 +1125,11 @@ export function App() {
       onSeekPreview={previewSeek}
       onSeekCommit={commitSeek}
       onVolume={changeVolume}
+      playbackRate={playbackRate}
+      onPlaybackRate={changePlaybackRate}
+      sleepRemaining={sleepDeadline === null ? null : sleepRemaining}
+      sleepAfterTrack={sleepAfterTrack}
+      onSleepTimer={setSleepTimer}
       onToggleMute={toggleMute}
       onToggleQuality={toggleQuality}
       onToggleRepeat={toggleRepeat}
@@ -854,6 +1140,10 @@ export function App() {
       lyricsOpen={lyricsOpen}
       queueOpen={queueOpen}
       queueCount={queue.length}
+      miniOpen={auxOpen.mini}
+      desktopLyricsOpen={auxOpen.lyrics}
+      onToggleMini={() => void toggleAux('mini')}
+      onToggleDesktopLyrics={() => void toggleAux('lyrics')}
       favorite={currentTrack ? favoriteOf(currentTrack.id) : undefined}
       onToggleFavorite={() => { if (currentTrack) void toggleFavorite(currentTrack, !favoriteOf(currentTrack.id)); }}
     />

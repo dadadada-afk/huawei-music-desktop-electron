@@ -85,7 +85,8 @@ try {
   let login;
   for (let i = 0; i < 100 && !login; i++) { login = app.windows().find(item => item !== page); if (!login) await page.waitForTimeout(50); }
   await login.getByRole('button', { name: 'Authorize synthetic fixture' }).click({ noWaitAfter: true });
-  await page.getByRole('button', { name: '退出', exact: true }).waitFor({ timeout: 10000 });
+  // Signing out lives behind the sidebar account menu now; the foot button is the logged-in signal.
+  await page.getByRole('button', { name: '账号菜单' }).waitFor({ timeout: 10000 });
   const results = await page.evaluate(async () => {
     const api = window.desktop.music;
     const status = await window.desktop.auth.status();
@@ -166,7 +167,8 @@ try {
   assert.equal(invalid.status.data.authenticated, true);
   // Synthetic corrupt backups must also disappear, while non-personal settings survive.
   await writeFile(join(profile, 'queue.json.bak'), 'synthetic-private-backup');
-  await page.getByRole('button', { name: '退出', exact: true }).click();
+  await page.getByRole('button', { name: '账号菜单' }).click();
+  await page.getByRole('menuitem', { name: '退出登录' }).click();
   await page.getByRole('button', { name: '打开官方登录' }).waitFor({ timeout: 10000 });
   await page.waitForTimeout(1800);
   for (const name of ['queue.json', 'queue.json.bak', 'cache.json', 'session.enc', 'write-intent.json']) {

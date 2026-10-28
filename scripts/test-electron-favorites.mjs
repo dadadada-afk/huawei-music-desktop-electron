@@ -34,6 +34,8 @@ try {
     ipcMain.handle('music:resolve-playback', (_event, input) => { state.resolved.push(input.trackId); return { ok: false, error: { kind: 'unsupported', message: '合成数据：仅验证收藏分页与队列，不提供实际音源。', retryable: false } }; });
   });
   await page.reload();
+  // The landing view is the discover page; the library page is only visible once navigated to.
+  await page.getByRole('button', { name: '我的收藏', exact: true }).click();
   await page.getByText('已加载 50 首', { exact: true }).waitFor({ timeout: 10000 });
   await page.getByRole('button', { name: '总数统计失败，重试' }).waitFor();
   assert.equal(await page.getByText('共 50 首收藏', { exact: true }).count(), 0, 'a page count was falsely presented as the total');

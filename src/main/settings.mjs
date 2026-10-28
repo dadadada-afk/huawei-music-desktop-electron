@@ -1,13 +1,21 @@
 // Pure settings/queue sanitation so persisted JSON can never widen the IPC contract.
 /** @type {import('../shared/types').AppSettings} */
 export const DEFAULT_SETTINGS = Object.freeze({
-  closeBehavior: 'quit',
+  // A music player is expected to keep playing when the window is closed or minimized, which is
+  // how every mainstream desktop player behaves; quitting is still one setting away.
+  closeBehavior: 'tray',
   quality: 'standard',
   volume: 0.85,
   repeatMode: 'off',
   shuffle: false,
   syncHistory: true,
   thirdPartyLyrics: true,
+  sidebarCollapsed: false,
+  lyricsOpacity: 1,
+  lyricsLocked: false,
+  lyricsFontSize: 30,
+  lyricsColor: '#ffe9eb',
+  playbackRate: 1,
   appearance: Object.freeze({
     accent: 'red',
     panelOpacity: 1,
@@ -23,6 +31,9 @@ import { isSafeResourceUrl } from '../safe-media-url.mjs';
 const CLOSE_BEHAVIORS = new Set(['quit', 'tray']);
 const QUALITIES = new Set(['standard', 'lossless']);
 const REPEAT_MODES = new Set(['off', 'all', 'one']);
+// The menu offers exactly these steps, so a stored value outside the set is a corrupted file, not a
+// new preference: snap it back instead of honouring an arbitrary speed.
+const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
 const ACCENTS = new Set(['red', 'blue', 'green', 'amber', 'violet', 'custom']);
 const FONT_CHOICES = new Set(['sans', 'serif', 'mono', 'custom']);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -68,9 +79,20 @@ export function sanitizeSettings(input, fallback = DEFAULT_SETTINGS) {
   if (typeof raw.shuffle === 'boolean') next.shuffle = raw.shuffle;
   if (typeof raw.syncHistory === 'boolean') next.syncHistory = raw.syncHistory;
   if (typeof raw.thirdPartyLyrics === 'boolean') next.thirdPartyLyrics = raw.thirdPartyLyrics;
+  if (typeof raw.sidebarCollapsed === 'boolean') next.sidebarCollapsed = raw.sidebarCollapsed;
+  if (typeof raw.lyricsLocked === 'boolean') next.lyricsLocked = raw.lyricsLocked;
+  // Below 0.3 the overlay text stops being legible over a bright desktop, so the floor is a
+  // usability bound rather than an arbitrary clamp.
+  next.lyricsOpacity = clampNumber(raw.lyricsOpacity, 0.3, 1, base.lyricsOpacity);
+  // The overlay is read from across a desk, so the floor keeps it legible and the ceiling keeps a
+  // single line from wrapping into the line below it.
+  next.lyricsFontSize = clampNumber(raw.lyricsFontSize, 18, 64, base.lyricsFontSize);
+  // Only a plain #rrggbb reaches the stylesheet; anything else falls back instead of being injected.
+  if (typeof raw.lyricsColor === 'string' && HEX_COLOR.test(raw.lyricsColor)) next.lyricsColor = raw.lyricsColor.toLowerCase();
   if (typeof raw.volume === 'number' && Number.isFinite(raw.volume)) {
     next.volume = Math.min(1, Math.max(0, raw.volume));
   }
+  if (typeof raw.playbackRate === 'number' && PLAYBACK_RATES.includes(raw.playbackRate)) next.playbackRate = raw.playbackRate;
   if (raw.appearance && typeof raw.appearance === 'object') {
     next.appearance = sanitizeAppearance(raw.appearance, base.appearance);
   }
