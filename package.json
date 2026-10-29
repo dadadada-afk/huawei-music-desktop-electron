@@ -17,7 +17,7 @@
     "dev": "npm run start",
     "start": "npm run build && node scripts/start-desktop.mjs",
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "npm run typecheck && electron-vite build && node scripts/copy-icon.mjs",
     "test": "node --test test/*.test.mjs",
     "test:electron": "npm run build && node scripts/run-electron-tests.mjs smoke",
     "test:electron-ui": "npm run build && node scripts/run-electron-tests.mjs ui",
@@ -90,6 +90,7 @@
           ]
         }
       ],
+      "icon": "build/icon.ico",
       "forceCodeSigning": false,
       "artifactName": "${name}-${version}-${os}-${arch}-setup-internal.${ext}"
     },

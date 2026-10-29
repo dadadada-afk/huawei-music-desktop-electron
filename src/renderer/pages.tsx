@@ -433,7 +433,7 @@ const LYRIC_COLORS = [
 ];
 
 export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings = ctx.settings;
-  const [tab, setTab] = useState<'playback' | 'appearance' | 'about'>('playback');
+  const [tab, setTab] = useState<'playback' | 'appearance' | 'shortcuts' | 'about'>('playback');
   const appearance = settings?.appearance;
   // Optimistic local copy: dragging a slider must repaint immediately instead of waiting for the
   // IPC round-trip, otherwise fast keyboard repeats read a stale value and drop steps.
@@ -497,6 +497,7 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
   const tabs: { key: typeof tab; label: string }[] = [
     { key: 'playback', label: '播放' },
     { key: 'appearance', label: '外观' },
+    { key: 'shortcuts', label: '快捷键' },
     { key: 'about', label: '关于' },
   ];
 
@@ -703,6 +704,33 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
           <p className="hint">全局快捷键 <strong>Ctrl + Alt + L</strong> 可随时锁定 / 解锁桌面歌词。</p>
         </div>
         <button className="ghost" onClick={() => updateAppearance({ accent: 'red', panelOpacity: 1, cornerRadius: 11, fontScale: 1, fontFamily: 'sans' })}>恢复默认外观</button>
+      </div>}
+
+      {tab === 'shortcuts' && <div className="settings-form">
+        <p className="hint">
+          全局快捷键在应用收进托盘或停留在后台时同样生效；下面的组合若被其它程序占用，
+          系统会拒绝注册，此时改用界面按钮或托盘菜单即可。
+        </p>
+        <table className="shortcut-table">
+          <thead>
+            <tr><th scope="col">组合</th><th scope="col">作用</th><th scope="col">生效范围</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>P</kbd></td><td>播放 / 暂停</td><td>全局</td></tr>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>←</kbd></td><td>上一首</td><td>全局</td></tr>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>→</kbd></td><td>下一首</td><td>全局</td></tr>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>↑</kbd></td><td>音量加</td><td>全局</td></tr>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>↓</kbd></td><td>音量减</td><td>全局</td></tr>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>L</kbd></td><td>锁定 / 解锁桌面歌词</td><td>全局</td></tr>
+            <tr><td>键盘媒体键</td><td>播放 / 上一首 / 下一首</td><td>全局</td></tr>
+            <tr><td><kbd>Space</kbd></td><td>播放 / 暂停（焦点在应用内时）</td><td>应用内</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>关闭当前弹层或正在播放页</td><td>应用内</td></tr>
+          </tbody>
+        </table>
+        <p className="hint">
+          鼠标操作：双击歌曲行播放；右键歌曲可下一首播放、加入队列、看歌手、看专辑；
+          播放队列里拖动任意行即可改顺序。
+        </p>
       </div>}
 
       {tab === 'about' && <div className="settings-form">

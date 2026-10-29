@@ -14,8 +14,14 @@ import { loadJson, saveJson } from './json-store.cjs';
 import { sanitizeWindowState } from './window-state.mjs';
 import { TRAY_ICON_PNG_BASE64 } from './icons';
 import { APP_DISPLAY_NAME } from '../shared/app-name.mjs';
+import { existsSync } from 'node:fs';
 import { channels } from '../shared/channels';
 import type { AppSettings, AuxWindowKind, LyricsAppearance, PlayerCommand, PlayerSnapshot } from '../shared/types';
+
+// out/main/index.js resolves to out/icon.png, which the build step copies from build/icon.png. A
+// missing file is tolerated so a source checkout without the copy still opens a window.
+const APP_ICON_PATH = [join(__dirname, '../icon.png'), join(__dirname, '../../build/icon.png')]
+  .find(candidate => existsSync(candidate));
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -85,6 +91,9 @@ async function createWindow(): Promise<void> {
     width: bounds?.width ?? 1180, height: bounds?.height ?? 760, minWidth: 960, minHeight: 640,
     ...(bounds?.x !== undefined && bounds?.y !== undefined ? { x: bounds.x, y: bounds.y } : {}),
     title: APP_DISPLAY_NAME,
+    // The packaged executable still carries Electron's stock icon, so the window and taskbar take
+    // theirs from the file next to the bundle instead of from the .exe resources.
+    ...(APP_ICON_PATH ? { icon: APP_ICON_PATH } : {}),
     // No native title bar: the window title carried the whole "第三方客户端（学习版）" string, which
     // is disclaimer text, not an app name worth painting across the top. The OS keeps drawing the
     // minimise/maximise/close buttons through the overlay, so the window stays operable.

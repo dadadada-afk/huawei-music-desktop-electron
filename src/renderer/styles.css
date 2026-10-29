@@ -1114,6 +1114,45 @@ select:focus-visible,
 }
 .settings-panel { min-width: 0; }
 .settings-form { max-width: none; }
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  margin: 4px 0 14px;
+}
+.shortcut-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.shortcut-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  vertical-align: middle;
+}
+.shortcut-table tr:last-child td { border-bottom: 0; }
+/* Key caps read as physical keys: monospaced, bordered, and never wrapped mid-chord. */
+.shortcut-table kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 2px 6px;
+  margin: 0 1px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface-soft);
+  font-family: var(--font-num);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .settings-version {
   margin: 22px 0 0;
   font-size: var(--fs-xs);
