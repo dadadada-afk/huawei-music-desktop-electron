@@ -79,6 +79,19 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   overflow: hidden;
   min-height: 14px;
 }
+/* The next line only exists when the strip is tall enough to hold it: at the 96 px default a second
+   row would push the progress bar out of the window instead of telling the user anything new. The
+   user can drag the window taller, so the row appears exactly when the space does. */
+.mini-lyric-next { display: none; }
+@media (min-height: 126px) {
+  .mini-lyric-next {
+    display: block;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.52);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mini-lyric { -webkit-line-clamp: 1; }
+}
 .mini-time { font-size: 10px; color: rgba(255, 255, 255, 0.45); font-variant-numeric: tabular-nums; }
 
 .mini-controls button.is-active { color: #ff6b74; }
@@ -154,16 +167,18 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   opacity: 0.72;
   transition: opacity 0.15s ease;
 }
-.dlyric:hover .dlyric-bar { opacity: 1; }
+.dlyric:not(.locked):hover .dlyric-bar { opacity: 1; }
+.dlyric:not(.locked):hover .dlyric-controls { opacity: 1; pointer-events: auto; }
 .dlyric button { -webkit-app-region: no-drag; }
 
 /* Unlocked, the overlay is an invisible strip of text: without this the user has no idea where its
    edges are, and everything they need (drag, resize, opacity, lock) lives at those edges. Locked
    windows are click-through, so hover never fires and the hint stays out of the way. */
-.dlyric:hover {
+.dlyric:not(.locked):hover {
   /* A light scrim, not a dark plate: the overlay sits on top of arbitrary windows, and a grey wash
      reads as "this is a panel" on both light and dark backgrounds while the border does the work of
-     showing the exact bounds the window will resize to. */
+     showing the exact bounds the window will resize to. Locked is click-through, so the frame would
+     only sit on top of the user's work with nothing to click. */
   background: rgba(120, 126, 138, 0.42);
   border-color: rgba(255, 255, 255, 0.85);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 8px 26px rgba(0, 0, 0, 0.35);
@@ -196,6 +211,40 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 .dlyric-bar button:hover { background: rgba(255, 255, 255, 0.26); }
 /* Locked is click-through, so the bar must not pretend to be interactive. */
 .dlyric.locked .dlyric-bar { opacity: 0.28; }
+.dlyric.locked .dlyric-controls { opacity: 0; pointer-events: none; }
+
+/* The transport is absolutely placed on the bottom edge, so the text needs to stop above it or the
+   two overlap on a short window. Locked, there is nothing to click and the strip reclaims the space. */
+.dlyric:not(.locked) { padding-bottom: 34px; }
+
+/* Transport sits on the bottom edge, apart from the appearance buttons: one row is about how the
+   overlay looks, the other is about the music, and mixing them made both harder to hit. */
+.dlyric-controls {
+  position: absolute;
+  bottom: 5px; left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  background: rgba(18, 20, 26, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.dlyric-controls button {
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.86);
+  width: 24px; height: 24px;
+  border-radius: 7px;
+  display: grid; place-items: center;
+  cursor: pointer;
+}
+.dlyric-controls button:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.dlyric-controls button.on { color: #ff6b78; }
 
 .dlyric-current {
   font-size: var(--dlyric-size, 30px);
@@ -236,4 +285,15 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
     -1px 1px 0 rgba(0, 0, 0, 0.7), 1px 1px 0 rgba(0, 0, 0, 0.7),
     0 2px 8px rgba(0, 0, 0, 0.6);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Each line is remounted (React key) when the sung line changes, so one short animation gives the
+   overlay the vertical "roll" a lyric list has, without a scrolling container to keep in sync. */
+@keyframes dlyric-roll {
+  from { opacity: 0.25; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.dlyric-prev, .dlyric-current, .dlyric-next { animation: dlyric-roll 280ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .dlyric-prev, .dlyric-current, .dlyric-next { animation: none; }
 }

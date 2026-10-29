@@ -129,7 +129,7 @@ export function App() {
   const [accountVersion, setAccountVersion] = useState(0);
   const [favoriteChange, setFavoriteChange] = useState<LibraryContext['favoriteChange']>(null);
   const favoritePending = useRef(new Set<string>());
-  const playCommand = useRef({ toggle: () => {}, next: () => {}, previous: () => {}, volume: (_delta: number) => {} });
+  const playCommand = useRef({ toggle: () => {}, next: () => {}, previous: () => {}, volume: (_delta: number) => {}, toggleFavorite: () => {} });
   const [localHistory, setLocalHistory] = useState<Track[]>([]);
   const [volume, setVolume] = useState(0.85);
   const [quality, setQuality] = useState<'standard' | 'lossless'>('standard');
@@ -197,6 +197,7 @@ export function App() {
       if (command === 'play-pause') playCommand.current.toggle();
       else if (command === 'next') playCommand.current.next();
       else if (command === 'previous') playCommand.current.previous();
+      else if (command === 'toggle-favorite') playCommand.current.toggleFavorite?.();
       else playCommand.current.volume(command === 'volume-up' ? 0.05 : -0.05);
     });
     const unsubscribeSeek = window.desktop.player.onSeek(seconds => {      const element = audio.current;
@@ -626,6 +627,9 @@ export function App() {
     previous: goPrevious,
     // Clamped in one place so a held-down chord cannot push the slider past either end.
     volume: delta => setVolume(current => Math.min(1, Math.max(0, Math.round((current + delta) * 100) / 100))),
+    // The overlay's heart goes through the same guard as the list rows, so a double click cannot
+    // race two writes for one track.
+    toggleFavorite: () => { if (currentTrack) void toggleFavorite(currentTrack, !favoriteOf(currentTrack.id)); },
   };
 
   function previewSeek(value: number) { seeking.current = true; seekTarget.current = value; setPosition(value); }
@@ -920,10 +924,16 @@ export function App() {
       artists: currentTrack?.artists.map(artist => artist.name).join(' / ') ?? '',
       ...(currentTrack?.coverUrl ? { coverUrl: currentTrack.coverUrl } : {}),
       playing, position, duration,
-      lyrics: lines.map(line => line.text),
+      lyrics: lines.map(line => ({
+        text: line.text,
+        timeMs: line.timeMs,
+        ...(line.translation ? { translation: line.translation } : {}),
+        ...(line.segments ? { segments: line.segments } : {}),
+      })),
       lyricIndex: typeof active === 'number' ? active : -1,
+      favorited: currentTrack ? favoriteOf(currentTrack.id) === true : false,
     });
-  }, [currentTrack, playing, position, duration, lyrics]);
+  }, [currentTrack, playing, position, duration, lyrics, favoriteIds]);
 
   // Both insertion helpers keep `order` a permutation of queue indexes: shifting every later entry
   // by one is what keeps the currently playing track playing instead of jumping elsewhere.

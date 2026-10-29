@@ -27,7 +27,10 @@ export function MiniPlayer() {
   // Local, not persisted: pinning is a mood, not a preference, and the window starts unpinned.
   const [pinned, setPinned] = useState(false);
   const playing = state?.playing ?? false;
-  const activeLyric = state?.lyrics?.[state.lyricIndex] ?? '';
+  const activeLyric = state?.lyrics?.[state.lyricIndex]?.text ?? '';
+  // The next line only shows when the strip is tall enough to hold it: at 96 px a second row would
+  // push the progress bar out of the window instead of adding information.
+  const nextLyric = state?.lyrics?.[state.lyricIndex + 1]?.text ?? '';
   const duration = state?.duration ?? 0;
   const ratio = duration > 0 ? Math.min(1, (state?.position ?? 0) / duration) : 0;
   return <div className="mini">
@@ -45,6 +48,8 @@ export function MiniPlayer() {
         <span className="mini-artist" title={state?.artists ?? ''}>{state?.artists || '在华为音乐里选一首'}</span>
       </div>
       <div className="mini-lyric" title={activeLyric}>{activeLyric || ' '}</div>
+      {/* Only laid out once the strip is tall enough; see the min-height rule in overlay.css. */}
+      <div className="mini-lyric-next" title={nextLyric}>{nextLyric || ' '}</div>
       <button
         className="mini-progress"
         aria-label="播放进度"

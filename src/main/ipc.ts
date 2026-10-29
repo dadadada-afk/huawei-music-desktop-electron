@@ -11,7 +11,7 @@ import { listSystemFonts } from './system-fonts';
 import { clearLyricsCache, lyricsCacheInfo, readLyricsFile, removeLocalLyrics, writeLocalLyrics } from './lyrics-cache';
 import { parseLyrics } from '../lyrics.mjs';
 import { fail, ok } from '../shared/result';
-import type { AuxWindowKind, LyricsAppearance, LyricsDoc, PlayerCommand, PlayerSnapshot, SavedQueue } from '../shared/types';
+import type { AuxWindowKind, LyricsAppearance, LyricsDoc, PlayerCommand, PlayerSnapshot, SavedQueue, SnapshotLyricLine } from '../shared/types';
 
 export function registerIpc(
   window: BrowserWindow,
@@ -381,8 +381,32 @@ function sanitizeSnapshot(input: unknown): PlayerSnapshot | null {
   const value = input as Record<string, unknown>;
   const text = (item: unknown, max: number) => (typeof item === 'string' ? item.slice(0, max) : '');
   const seconds = (item: unknown) => (typeof item === 'number' && Number.isFinite(item) && item >= 0 && item <= 24 * 3600 ? item : 0);
+  // Bounded here because this payload crosses three windows: word marks travel with the line so the
+  // overlay can fill it syllable by syllable, and a hostile renderer must not be able to push
+  // megabytes through the broadcast channel.
+  const segment = (item: unknown): { timeMs: number; text: string } | null => {
+    if (!item || typeof item !== 'object') return null;
+    const at = seconds((item as Record<string, unknown>).timeMs);
+    const label = text((item as Record<string, unknown>).text, 16);
+    return at || label ? { timeMs: at, text: label } : null;
+  };
+  const line = (item: unknown): SnapshotLyricLine | null => {
+    if (!item || typeof item !== 'object') return null;
+    const row = item as Record<string, unknown>;
+    const body = text(row.text, 400);
+    if (!body) return null;
+    const segments = Array.isArray(row.segments)
+      ? row.segments.map(segment).filter((entry): entry is { timeMs: number; text: string } => entry !== null).slice(0, 200)
+      : [];
+    return {
+      text: body,
+      timeMs: typeof row.timeMs === 'number' && Number.isFinite(row.timeMs) ? Math.max(0, row.timeMs) : null,
+      ...(typeof row.translation === 'string' && row.translation ? { translation: row.translation.slice(0, 400) } : {}),
+      ...(segments.length ? { segments } : {}),
+    };
+  };
   const lyrics = Array.isArray(value.lyrics)
-    ? value.lyrics.filter((line): line is string => typeof line === 'string').slice(0, 2000).map(line => line.slice(0, 400))
+    ? value.lyrics.map(line).filter((entry): entry is SnapshotLyricLine => entry !== null).slice(0, 2000)
     : [];
   const lyricIndex = typeof value.lyricIndex === 'number' && Number.isInteger(value.lyricIndex) ? value.lyricIndex : -1;
   return {
@@ -394,5 +418,6 @@ function sanitizeSnapshot(input: unknown): PlayerSnapshot | null {
     duration: seconds(value.duration),
     lyrics,
     lyricIndex: lyricIndex >= -1 && lyricIndex < lyrics.length ? lyricIndex : -1,
+    favorited: value.favorited === true,
   };
 }

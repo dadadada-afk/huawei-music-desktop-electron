@@ -122,7 +122,7 @@ try {
   ]);
   assert.deepEqual(boundary.settingsKeys, ['get', 'update']);
   assert.deepEqual(boundary.queueKeys, ['load', 'save']);
-  assert.deepEqual(boundary.windowKeys, ['minimize', 'setCloseBehavior']);
+  assert.deepEqual(boundary.windowKeys, ['dragEnd', 'dragMove', 'dragStart', 'minimize', 'setCloseBehavior']);
   assert.deepEqual(boundary.playerKeys, [
     'broadcast', 'control', 'onAuxState', 'onCommand', 'onLyricsAppearance', 'onSeek', 'onState',
     'requestState', 'seek', 'setAuxPinned', 'setLyricsAppearance', 'showMain', 'toggleAux',

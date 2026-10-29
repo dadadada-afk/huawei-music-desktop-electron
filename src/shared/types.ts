@@ -156,7 +156,7 @@ export type SavedQueue = {
 };
 
 /** Fire-and-forget playback commands from the tray, the media keys and the mini player. */
-export type PlayerCommand = 'play-pause' | 'next' | 'previous' | 'volume-up' | 'volume-down';
+export type PlayerCommand = 'play-pause' | 'next' | 'previous' | 'volume-up' | 'volume-down' | 'toggle-favorite';
 
 /** The two always-on-top helpers. Neither owns playback; both only mirror the main window. */
 export type AuxWindowKind = 'mini' | 'lyrics';
@@ -172,9 +172,21 @@ export type PlayerSnapshot = {
   playing: boolean;
   position: number;
   duration: number;
-  /** Plain text per line, already ordered; the receiver picks the active one by index. */
-  lyrics: string[];
+  /**
+   * Already ordered; the receiver picks the active one by index. Word marks travel with the line so
+   * the overlay can colour a lyric one syllable at a time instead of one row at a time.
+   */
+  lyrics: SnapshotLyricLine[];
   lyricIndex: number;
+  /** Whether the current track is in the user's favourites, so the overlay's heart is honest. */
+  favorited: boolean;
+};
+
+export type SnapshotLyricLine = {
+  text: string;
+  timeMs: number | null;
+  translation?: string;
+  segments?: LyricSegment[];
 };
 
 /** One row of an exported list; every cell is already human-readable. */
