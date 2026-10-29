@@ -1,4 +1,7 @@
-App icon artwork is derived from the Lucide icon set (icon "music").
+App and tray SVG artwork is derived from Lucide "music-2" (Music2).
+Ruby background, record grooves and composition are project artwork.
+Editable SVG sources and generated PNGs: native/scripts/make-icon.mjs, build/icon.svg,
+build/tray.svg. Lucide attribution and ISC terms are retained below.
 
 ISC License
 

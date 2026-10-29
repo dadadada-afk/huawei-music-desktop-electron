@@ -1,12 +1,64 @@
-# Local research captures may contain temporary URLs or session material.
-research/
+# Private accounts, research and local configuration
 .local/
+research/
 .env
 .env.*
 !.env.example
+*.local
+*.local.*
+!*.local.example
+
+# Dependencies and generated output
 node_modules/
 out/
 release/
 dist/
+coverage/
+.nyc_output/
+.cache/
+.tmp/
+tmp/
+*.log
+*.log.*
+*.pid
+*.pid.lock
+*.tsbuildinfo
+*.test
+*.test.exe
+coverage.out
+coverage-*.out
+*.prof
+*.pprof
+
+# Python / tooling caches
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Editors and temporary files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+*.rej
+
+# macOS / Windows / Linux desktop metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.directory
+
+# Keep source assets, manifests and dependency locks versioned.

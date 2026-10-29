@@ -1,24 +1,17 @@
 # 项目工作规则
 
-- 本项目是华为音乐独立第三方桌面客户端；不用其他平台音源，不依赖手机充当播放器。
-- 已有 Electron + React + TypeScript 客户端与 Linux Electron 自动化；实际验收以 `docs/IMPLEMENTATION_STATUS.md` 为准。当前以 Linux 完成共享 API/页面/播放器验证，不用 Windows/macOS 或 Wine 阻塞开发；未验平台不能宣称已验收。不要重新选 Tauri/Go。
-- 开工先读 `README.md`、`docs/IMPLEMENTATION_PLAN.md`、`docs/API_CONTRACT.md`、`docs/authorized-feature-validation.md`。
-- 交接任务书：`docs/IMPLEMENTER_PROMPT.md`。按 M0–M6 推进，先完成真实登录和 MP3/FLAC 播放，再铺 UI。
-- 启动：`npm ci && npm start`；检查：`npm test`、`typecheck`、`build`、`test:electron`、`test:electron-ui`、`test:electron-business`、`test:electron-favorites`。后两项含合成账号/965 首夹具，不能当私人账号证据。`probe:login` / `probe:music` 会请求外网但不登录个人账号。
-- 现有 `src/*.mjs` 和 `test/` 是独立协议原型，可迁移复用；`scripts/` 为实验命令，不能全部塞进发行包。
-- `.local/` 包含真实账号凭据和音乐库数据：禁止打印/上传/提交/打包。`research/` 为本地研究材料，同样不得进入发行包。
-- 不主动调用保存的私人会话或重跑写测试；真实个人联网验证需当前用户授权。写操作只能用本次确定的临时对象并最终读回确认清理。
-- 方案文档是目标要求，不是已实现状态。历史研究描述遇到冲突，以最新实测和 README 当前状态为准。
-- 音乐 token 与账号 AT 不同：AT=1小时；音乐会话超过1小时仍可用，约7天只是到期字段线索。自动续期未打通。
-- 每日推荐首版不做；歌单简介编辑已测，不等于改名/曲目编辑/封面均已测。
-- playlist/detail/all 要真实 playListID；自建歌单删除用 playlist/delete，不能用 favorite/delete 的成功码冒充删除完成。
-- playback 顶层 fileURL 是音频，fileInfos 可能是 JSON。auditionTime 不能单独判为30秒试听；完整播放按实际权限、资源和时长验证。
-- 收藏没有已确认的直接总数字段：总数由主进程完整分页后 ID 去重得到，与“已加载 N 首”分开。保留滚动自动加载/失败重试/切页位置；禁止用首屏数量冒充总数或把合成数据截图当本人音乐库。
-- 主进程持有凭据与业务 HTTP；renderer 只用白名单 IPC。官方登录页嵌在主窗口的 `WebContentsView` 中（不是第二个窗口），仍必须无 preload/Node/业务 IPC，取消只能走 `auth:cancelLogin`；顶部取消条高度与 `LOGIN_VIEW_TOP_INSET` 必须一致。
-- 不关闭 webSecurity/TLS 校验；不抢占系统 hms://；不把研究原型的0600明文文件当正式安全存储。
-- 不创建复杂抽象、插件框架、后端服务、云端令牌代理或移动端工程。
-- 二进制只通过 GitHub Release 发布（未签名测试构建），发布说明必须写明未签名、非官方、OAuth 身份不属于本项目；不要另开对象存储/网盘等公开分发渠道。
-- 不擅自公开仓库/产物、变更系统代理或删除研究现场。
-- 应用/托盘图标由 `scripts/make-icon.mjs` 从 Lucide（ISC）生成；换图标要重跑脚本并保留 `build/icon.LICENSE.txt` 归属声明。
-- 不要恢复 Electron 默认菜单栏（Windows/Linux 应为无菜单，macOS 仅最小角色）；显示名统一用 `src/shared/app-name.mjs`，不得改 `package.json` 的 `name`（会挪动 userData 路径、丢旧数据）。
-- 实现阶段维护简短 `docs/IMPLEMENTATION_STATUS.md`，按真实证据标 pending/in-progress/verified；没有测试的平台不宣称支持已验收。
+- 听澜（Tinglan）是 Go + Viva 原生华为音乐第三方桌面客户端。旧 Electron/React 客户端与工具已移除，不恢复旧技术栈。
+- 开工先读 README.md、docs/IMPLEMENTATION_STATUS.md、docs/API_CONTRACT.md、docs/authorized-feature-validation.md。历史方案/验证记录保留作参考，与当前状态冲突时以当前实现和最新用户要求为准。
+- 原生代码在 native/；启动 npm start，构建 npm run build，测试 npm test，静态检查 npm run vet，界面回归 npm run test:native:ui。Go 可执行文件可通过 HWMUSIC_GO 传给构建/启动脚本。
+- macOS Apple Silicon 是当前主要实机环境。GitHub Actions 分别在 macOS arm64 与 Intel x64 runner 构建 DMG；Windows/Linux 暂不打包，未验证的平台不能宣称验收。
+- 不使用其他音乐平台音源，不依赖手机播放器，不绕过会员/地域/DRM，不实现音频下载或解密。
+- .local/、research/ 含私人凭据与研究材料，禁止打印、提交、上传、打包。不得主动使用保存的私人会话或执行真实账号写操作；需要当前用户授权。
+- 登录与业务请求由 Go 内部模块处理；不关闭 TLS 校验，不抢占全局 hms://，不改系统代理。凭据按用户决定存应用数据目录，不使用钥匙串；音乐会话确认失效后重新登录，不自动续期。
+- 保留 package.json 的 name、bundle 标识和用户数据目录，避免升级丢数据。显示名统一来自 native/app-name.mjs。
+- 收藏总数由完整分页后 ID 去重确认，不能用首屏数量冒充总数。搜索滚动分页，不显示已加载计数/播放全部；搜索点歌加入当前队列，不替换已有队列。
+- 不提供创建歌单/添加歌曲到歌单入口；已有歌单可浏览，已验证的简介修改/删除逻辑保留。playlist/detail/all 必须使用真实 playListID，删除用 playlist/delete，不能用 favorite/delete 代替。
+- 顶层 playback.fileURL 是音频，fileInfos 可能是 JSON。auditionTime 不能单独判为试听；完整播放按实际资源、权限与解码时长验证。
+- 图标由 native/scripts/make-icon.mjs 与 generate-assets.mjs 生成；矢量源在 native/assets/lucide/，保留 ISC 与 build/icon.LICENSE.txt 归属。
+- 二进制公开分发仅通过 GitHub Release；当前 workflow 只上传 CI 构建产物，不发布。说明须注明未签名、非官方、OAuth 身份不属于本项目。
+- 不擅自提交、推送、发布、公开仓库或删除研究现场。合成测试/截图不能当作私人账号证据，真实截图需用户授权。
+- 维护简短、可核对的 docs/IMPLEMENTATION_STATUS.md，明确区分实现、离线测试与实机验收。不要引入复杂框架、后端服务或云端凭据代理。

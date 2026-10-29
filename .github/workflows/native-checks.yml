@@ -1,0 +1,61 @@
+name: Tinglan macOS DMG
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify runner architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: node -e 'if (process.arch !== process.env.EXPECTED_ARCH) process.exit(1)'
+      - name: Fetch dependencies and license sources
+        working-directory: native
+        run: go mod download
+      - name: Tests
+        working-directory: native
+        run: go test ./... -count=1 -timeout 120s
+      - name: Static checks
+        working-directory: native
+        run: go vet ./...
+      - name: UI checks
+        run: npm run test:native:ui
+      - name: Build unsigned DMG
+        run: node native/scripts/package.mjs mac ${{ matrix.arch }}
+      - name: Upload DMG and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinglan-macos-${{ matrix.arch }}-unsigned
+          path: |
+            release/native/darwin-${{ matrix.arch }}/*.dmg
+            release/native/darwin-${{ matrix.arch }}/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
