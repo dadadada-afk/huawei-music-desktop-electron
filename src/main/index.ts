@@ -170,6 +170,13 @@ async function createWindow(): Promise<void> {
       onAuxDragMove: moveAuxDrag,
       onAuxDragEnd: endAuxDrag,
       onLyricsAppearance: patch => applyLyricsAppearance(patch),
+      onAppearanceChanged: settings => {
+        // Helper windows are separate documents: they never see the main window's :root, so the
+        // palette switch has to be handed to them explicitly.
+        for (const helper of auxWindows.values()) {
+          if (!helper.isDestroyed()) helper.webContents.send(channels.appearanceChanged, { theme: settings.theme, appearance: settings.appearance });
+        }
+      },
       onRequestState: sender => { if (!sender.isDestroyed()) sender.send(channels.playerState, latestSnapshot); },
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -347,9 +354,12 @@ function toggleAuxWindow(kind: AuxWindowKind): boolean {
 // Desktop lyric overlay appearance. `locked` turns the window click-through so it never swallows a
 // click meant for the desktop behind it; that also removes every in-window control, which is why the
 // main window and the tray expose the same switch.
-const lyricsAppearance: LyricsAppearance = { opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb', pendingColor: '#c8c8cf' };
+const lyricsAppearance: LyricsAppearance = { opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb', pendingColor: '#c8c8cf', align: 'center', transition: 'slide' };
 
-function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }): LyricsAppearance | null {
+const LYRIC_ALIGNS: LyricsAppearance['align'][] = ['left', 'center', 'right'];
+const LYRIC_TRANSITIONS: LyricsAppearance['transition'][] = ['none', 'fade', 'slide'];
+
+function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string; align?: LyricsAppearance['align']; transition?: LyricsAppearance['transition'] }): LyricsAppearance | null {
   if (typeof patch.opacity === 'number') {
     lyricsAppearance.opacity = Math.min(1, Math.max(0.3, patch.opacity));
   }
@@ -363,6 +373,8 @@ function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; font
   if (typeof patch.pendingColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.pendingColor)) {
     lyricsAppearance.pendingColor = patch.pendingColor.toLowerCase();
   }
+  if (patch.align && LYRIC_ALIGNS.includes(patch.align)) lyricsAppearance.align = patch.align;
+  if (patch.transition && LYRIC_TRANSITIONS.includes(patch.transition)) lyricsAppearance.transition = patch.transition;
   const window = auxWindows.get('lyrics');
   if (window && !window.isDestroyed()) {
     window.setOpacity(lyricsAppearance.opacity);
@@ -380,6 +392,8 @@ function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; font
     lyricsFontSize: lyricsAppearance.fontSize,
     lyricsColor: lyricsAppearance.color,
     lyricsPendingColor: lyricsAppearance.pendingColor,
+    lyricsAlign: lyricsAppearance.align,
+    lyricsTransition: lyricsAppearance.transition,
   }).catch(() => undefined);
   if (tray) tray.setContextMenu(buildTrayMenu());
   return { ...lyricsAppearance };
@@ -545,6 +559,8 @@ app.whenReady().then(() => {
     // Older settings files predate this field; falling back here keeps the overlay's gradient
     // definition valid instead of interpolating the string "undefined" into a CSS colour stop.
     lyricsAppearance.pendingColor = settings.lyricsPendingColor ?? '#8b9099';
+    lyricsAppearance.align = settings.lyricsAlign ?? 'center';
+    lyricsAppearance.transition = settings.lyricsTransition ?? 'slide';
   });
   configureApplicationMenu();
   // The tray reflects persisted lyric lock state, so create it only after settings restoration.

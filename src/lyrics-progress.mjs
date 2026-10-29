@@ -40,15 +40,17 @@ export function lineFill(line, startMs, endMs, positionMs) {
     // row falls back to the even spread rather than drifting.
     if (fills.length === chars.length) return fills;
   }
+  // No word marks: the line is one run, but the characters still light up one at a time. Handing
+  // every character the same ratio was what made the whole row switch colour in one step.
   const ratio = span > 0 ? clamp01((positionMs - startMs) / span) : (positionMs >= startMs ? 1 : 0);
-  return chars.map(() => ratio);
+  const cursor = ratio * chars.length;
+  return chars.map((_, index) => clamp01(cursor - index));
 }
 
 /**
- * Turns per-character ratios into CSS gradient stops. Every character is one solid block in either
- * colour — a character that is more than half sung counts as sung. Splitting a single glyph between
- * the two colours made the row look smudged at ordinary font sizes, so the switch happens per
- * character, the way the karaoke rows in desktop players do it.
+ * Turns per-character ratios into CSS gradient stops. A character is split inside itself at its own
+ * ratio, so the row fills left to right the way a karaoke line does; snapping each character to
+ * whole-colour made the fill jump a syllable at a time instead of sweeping.
  *
  * @param {number[]} fills
  * @param {string} sung
@@ -61,14 +63,30 @@ export function fillGradient(fills, sung, pending) {
   // whole declaration is then dropped, leaving the row with no fill at all.
   const sungColor = typeof sung === 'string' && sung ? sung : '#ffe9eb';
   const pendingColor = typeof pending === 'string' && pending ? pending : '#8b9099';
+  // Fully sung means "no gradient" — the element's own colour is already the sung colour, and a
+  // gradient made of one stop pair costs a repaint on every frame for no visual change. Everything
+  // unsung still needs a gradient, otherwise the row would fall back to the sung colour.
   if (fills.every(value => value >= 1)) return undefined;
   const step = 100 / fills.length;
-  const stops = [];
+  // Built as colour runs first so neighbouring characters of the same colour collapse into one pair
+  // of stops. The gradient is rebuilt on every animation frame, and an unsimplified line costs about
+  // twice the string length for an identical picture.
+  const runs = [];
+  const push = (from, to, color) => {
+    const last = runs[runs.length - 1];
+    if (last && last.color === color && Math.abs(last.to - from) < 0.01) { last.to = to; return; }
+    runs.push({ from, to, color });
+  };
   fills.forEach((ratio, index) => {
     const from = index * step;
     const to = from + step;
-    const color = ratio >= 0.5 ? sungColor : pendingColor;
-    stops.push(`${color} ${from.toFixed(2)}%`, `${color} ${to.toFixed(2)}%`);
+    const clamped = clamp01(ratio);
+    if (clamped <= 0) { push(from, to, pendingColor); return; }
+    if (clamped >= 1) { push(from, to, sungColor); return; }
+    const cut = from + step * clamped;
+    push(from, cut, sungColor);
+    push(cut, to, pendingColor);
   });
+  const stops = runs.map(run => `${run.color} ${run.from.toFixed(2)}%, ${run.color} ${run.to.toFixed(2)}%`);
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }

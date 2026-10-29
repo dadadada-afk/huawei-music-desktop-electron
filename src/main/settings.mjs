@@ -16,6 +16,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   lyricsFontSize: 30,
   lyricsColor: '#ffe9eb',
   lyricsPendingColor: '#8b9099',
+  lyricsAlign: 'center',
+  lyricsTransition: 'slide',
   // Newest first, capped so the store cannot grow without bound.
   searchHistory: [],
   playbackRate: 1,
@@ -46,6 +48,8 @@ const FONT_CHOICES = new Set(['sans', 'serif', 'mono', 'custom']);
 // follow the OS preference.
 const THEMES = new Set(['system', 'light', 'dark', 'noir', 'paper', 'glass']);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const LYRICS_ALIGNS = ['left', 'center', 'right'];
+const LYRICS_TRANSITIONS = ['none', 'fade', 'slide'];
 
 function clampNumber(value, min, max, fallback) {
   return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
@@ -99,6 +103,8 @@ export function sanitizeSettings(input, fallback = DEFAULT_SETTINGS) {
   // Only a plain #rrggbb reaches the stylesheet; anything else falls back instead of being injected.
   if (typeof raw.lyricsColor === 'string' && HEX_COLOR.test(raw.lyricsColor)) next.lyricsColor = raw.lyricsColor.toLowerCase();
   if (typeof raw.lyricsPendingColor === 'string' && HEX_COLOR.test(raw.lyricsPendingColor)) next.lyricsPendingColor = raw.lyricsPendingColor.toLowerCase();
+  if (LYRICS_ALIGNS.includes(raw.lyricsAlign)) next.lyricsAlign = raw.lyricsAlign;
+  if (LYRICS_TRANSITIONS.includes(raw.lyricsTransition)) next.lyricsTransition = raw.lyricsTransition;
   if (Array.isArray(raw.searchHistory)) {
     next.searchHistory = raw.searchHistory
       .filter(entry => typeof entry === 'string' && entry.trim().length > 0 && entry.length <= 80)

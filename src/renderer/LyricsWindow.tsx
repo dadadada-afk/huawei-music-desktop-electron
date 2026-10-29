@@ -3,13 +3,14 @@ import { Heart, Lock, LockOpen, Minus, Pause, Play, Plus, SkipBack, SkipForward,
 import type { LyricsAppearance, PlayerSnapshot } from '../shared/types';
 import { useWindowDrag } from './useWindowDrag';
 import { fillGradient, lineFill } from '../lyrics-progress.mjs';
+import { applyAppearance, applyThemeAttribute, syncAppearanceFromSettings } from './appearance';
 
 // Three lines: the one just sung, the one being sung and the next one. The past line is what makes
 // "already sung" readable at a glance — with only current+next on screen the highlight had nothing
 // to be a highlight against. Frameless and always on top so it stays readable over other windows.
 export function LyricsWindow() {
   const [state, setState] = useState<PlayerSnapshot | null>(null);
-  const [look, setLook] = useState<LyricsAppearance>({ opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb', pendingColor: '#c8c8cf' });
+  const [look, setLook] = useState<LyricsAppearance>({ opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb', pendingColor: '#c8c8cf', align: 'center', transition: 'slide' });
   // The whole strip drags. A locked overlay is click-through, so its mousedown never arrives anyway.
   const onDragStart = useWindowDrag();
   // Subscribe first, then ask: the main process may have broadcast before this window finished
@@ -22,6 +23,13 @@ export function LyricsWindow() {
   // The main window and the tray can change these too, so the toolbar follows the applied state
   // instead of tracking its own copy of it.
   useEffect(() => window.desktop.player.onLyricsAppearance(setLook), []);
+  // Same reason as the mini player: a separate document means its own :root, so the accent has to
+  // be pulled once here or the toolbar keeps the stylesheet's default red.
+  useEffect(() => { void syncAppearanceFromSettings(); }, []);
+  useEffect(() => window.desktop.player.onAppearance(state => {
+    applyThemeAttribute(state.theme);
+    applyAppearance(state.appearance);
+  }), []);
 
   const lines = state?.lyrics ?? [];
   const index = state?.lyricIndex ?? -1;
@@ -47,7 +55,11 @@ export function LyricsWindow() {
   const resize = (delta: number) => apply({ fontSize: look.fontSize + delta });
   const command = (value: 'play-pause' | 'next' | 'previous' | 'toggle-favorite') =>
     window.desktop.player.control(value);
+  // data-align / data-transition drive the layout and the entrance animation from CSS, so switching
+  // either never has to re-render the line itself.
   return <div className={`dlyric ${look.locked ? 'locked' : ''}`}
+    data-align={look.align}
+    data-transition={look.transition}
     onMouseDown={onDragStart}
     style={{ '--dlyric-size': `${look.fontSize}px`, '--dlyric-color': look.color } as React.CSSProperties}>
     <div className="dlyric-bar">

@@ -238,5 +238,17 @@ def contact_sheet() -> None:
     print("wrote", OUT / "icon-candidates.png", "and icon-candidates-sizes.png")
 
 
+def hires() -> None:
+    """Full-size renders of the two candidates the user is comparing, for pixel-level review."""
+    for name, fn in (("F", icon_f), ("H", icon_h)):
+        for size in (512, 1024):
+            fn(size).save(OUT / f"icon-{name}-{size}.png")
+            print("wrote", OUT / f"icon-{name}-{size}.png")
+
+
 if __name__ == "__main__":
-    contact_sheet()
+    import sys
+    if "--hires" in sys.argv:
+        hires()
+    else:
+        contact_sheet()

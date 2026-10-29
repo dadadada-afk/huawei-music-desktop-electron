@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Maximize2, Music2, Pause, Pin, PinOff, Play, SkipBack, SkipForward, X } from 'lucide-react';
+import { applyAppearance, applyThemeAttribute, syncAppearanceFromSettings } from './appearance';
 import type { PlayerSnapshot } from '../shared/types';
 
 function clock(seconds: number): string {
@@ -24,6 +25,15 @@ export function MiniPlayer() {
     window.desktop.player.requestState();
     return unsubscribe;
   }, []);
+  // This window is its own document, so the main window's tokens never reach it: without this the
+  // progress bar and the play button stayed the baked-in red whatever palette was active.
+  useEffect(() => { void syncAppearanceFromSettings(); }, []);
+  // A live palette switch broadcasts to whatever helper windows are open, so this one does not have
+  // to be closed and reopened to pick up the new accent.
+  useEffect(() => window.desktop.player.onAppearance(state => {
+    applyThemeAttribute(state.theme);
+    applyAppearance(state.appearance);
+  }), []);
   // Local, not persisted: pinning is a mood, not a preference, and the window starts unpinned.
   const [pinned, setPinned] = useState(false);
   const playing = state?.playing ?? false;

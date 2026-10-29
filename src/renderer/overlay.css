@@ -313,6 +313,27 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   to { opacity: 1; transform: none; }
 }
 .dlyric-prev, .dlyric-current, .dlyric-next { animation: dlyric-roll 280ms ease-out both; }
+/* The roll stays the default because it reads best at a glance, but a moving overlay can be
+   distracting while reading along — hence the two flatter alternatives. */
+@keyframes dlyric-fade {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
+}
+.dlyric[data-transition='fade'] .dlyric-prev,
+.dlyric[data-transition='fade'] .dlyric-current,
+.dlyric[data-transition='fade'] .dlyric-next { animation: dlyric-fade 280ms ease-out both; }
+.dlyric[data-transition='none'] .dlyric-prev,
+.dlyric[data-transition='none'] .dlyric-current,
+.dlyric[data-transition='none'] .dlyric-next { animation: none; }
+
+/* Alignment is one property on each of the three rows; overriding it here keeps the line rules
+   themselves unchanged. */
+.dlyric[data-align='left'] .dlyric-prev,
+.dlyric[data-align='left'] .dlyric-current,
+.dlyric[data-align='left'] .dlyric-next { text-align: left; }
+.dlyric[data-align='right'] .dlyric-prev,
+.dlyric[data-align='right'] .dlyric-current,
+.dlyric[data-align='right'] .dlyric-next { text-align: right; }
 @media (prefers-reduced-motion: reduce) {
   .dlyric-prev, .dlyric-current, .dlyric-next { animation: none; }
 }

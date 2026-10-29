@@ -11,7 +11,7 @@ import { listSystemFonts } from './system-fonts';
 import { clearLyricsCache, lyricsCacheInfo, readLyricsFile, removeLocalLyrics, writeLocalLyrics } from './lyrics-cache';
 import { parseLyrics } from '../lyrics.mjs';
 import { fail, ok } from '../shared/result';
-import type { AuxWindowKind, LyricsAppearance, LyricsDoc, PlayerCommand, PlayerSnapshot, SavedQueue, SnapshotLyricLine } from '../shared/types';
+import type { AppSettings, AuxWindowKind, LyricsAppearance, LyricsDoc, PlayerCommand, PlayerSnapshot, SavedQueue, SnapshotLyricLine } from '../shared/types';
 
 export function registerIpc(
   window: BrowserWindow,
@@ -30,9 +30,11 @@ export function registerIpc(
     onAuxDragMove?: (sender: Electron.WebContents, point: { x: number; y: number }) => void;
     onAuxDragEnd?: (sender: Electron.WebContents) => void;
     /** Applies and persists the desktop lyric overlay appearance; returns the applied state. */
-    onLyricsAppearance?: (patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }) => LyricsAppearance | null;
+    onLyricsAppearance?: (patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string; align?: LyricsAppearance['align']; transition?: LyricsAppearance['transition'] }) => LyricsAppearance | null;
     /** Auxiliary windows ask for the current snapshot once their listener is attached. */
     onRequestState?: (sender: Electron.WebContents) => void;
+    /** Fans a saved settings object out to every window so helper windows repaint with it. */
+    onAppearanceChanged?: (settings: AppSettings) => void;
   } = {},
 ): void {
   const guard = (event: Electron.IpcMainInvokeEvent) => {
@@ -252,6 +254,8 @@ export function registerIpc(
       window.setTitleBarOverlay({ color: palette.background, symbolColor: palette.symbol, height: 34 });
     }
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: next.launchAtLogin, args: ['--hidden'] });
+    // The helper windows have their own :root, so a palette change has to be pushed to them.
+    hooks.onAppearanceChanged?.(next);
     return ok(next);
   });
   ipcMain.handle(channels.fontsList, async event => { guard(event); return ok({ families: await listSystemFonts() }); });
@@ -345,14 +349,16 @@ export function registerIpc(
     if (input?.kind !== 'mini' && input?.kind !== 'lyrics') throw new Error('辅助窗口类型无效');
     return hooks.onPinAux?.(input.kind, input.pinned === true) ?? false;
   });
-  ipcMain.handle(channels.windowLyricsAppearance, async (event, input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string } = {}) => {
+  ipcMain.handle(channels.windowLyricsAppearance, async (event, input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string; align?: LyricsAppearance['align']; transition?: LyricsAppearance['transition'] } = {}) => {
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
-    const patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string } = {};
+    const patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string; align?: LyricsAppearance['align']; transition?: LyricsAppearance['transition'] } = {};
     if (typeof input?.opacity === 'number' && Number.isFinite(input.opacity)) patch.opacity = input.opacity;
     if (typeof input?.locked === 'boolean') patch.locked = input.locked;
     if (typeof input?.fontSize === 'number' && Number.isFinite(input.fontSize)) patch.fontSize = input.fontSize;
     if (typeof input?.color === 'string') patch.color = input.color;
     if (typeof input?.pendingColor === 'string') patch.pendingColor = input.pendingColor;
+    if (typeof input?.align === 'string') patch.align = input.align;
+    if (typeof input?.transition === 'string') patch.transition = input.transition;
     const applied = hooks.onLyricsAppearance?.(patch);
     return applied ? ok(applied) : fail({ kind: 'unknown', message: '桌面歌词不可用', retryable: true });
   });

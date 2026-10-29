@@ -15,7 +15,7 @@ import { activeLyricIndex } from '../lyrics.mjs';
 import {
   autosaveDelay, buildShuffleOrder, historyReportDecision, onEndedAction, popPlayHistory, pushPlayHistory, stepCursor,
 } from './player.mjs';
-import { fontStackFor, tintFromHex } from './theme.mjs';
+import { ACCENTS, FONT_STACKS, applyAppearance, applyThemeAttribute } from './appearance';
 import { canRetryMediaFailure, reconcileTrackIndexes } from './track-reconcile.mjs';
 import type {
   AccentName, AppSettings, AuthStatus, AppearanceSettings, FontChoice, LyricsDoc, Playback, PlayMode, Playlist, Result, SavedQueue, Track,
@@ -42,50 +42,6 @@ const NAV_ICONS = {
   discover: Sparkles, favorites: Heart, playlists: ListMusic, search: Search, history: History,
   settings: SettingsIcon,
 };
-
-// Runtime tint map: the CSS keeps red as its default so the first paint is already correct.
-// 'theme' has no entry on purpose — it means "leave the palette's own accent alone".
-const ACCENTS: Record<Exclude<AccentName, 'custom' | 'theme'>, { accent: string; light: string; deep: string; soft: string; line: string; shadow: string }> = {
-  red: { accent: '#c8202e', light: '#e0364a', deep: '#a51724', soft: 'rgba(200, 32, 46, 0.09)', line: 'rgba(200, 32, 46, 0.28)', shadow: 'rgba(200, 32, 46, 0.28)' },
-  blue: { accent: '#2563eb', light: '#3b82f6', deep: '#1d4ed8', soft: 'rgba(37, 99, 235, 0.10)', line: 'rgba(37, 99, 235, 0.30)', shadow: 'rgba(37, 99, 235, 0.26)' },
-  green: { accent: '#15803d', light: '#22a05a', deep: '#166534', soft: 'rgba(21, 128, 61, 0.10)', line: 'rgba(21, 128, 61, 0.28)', shadow: 'rgba(21, 128, 61, 0.24)' },
-  amber: { accent: '#b45309', light: '#d97706', deep: '#92400e', soft: 'rgba(180, 83, 9, 0.11)', line: 'rgba(180, 83, 9, 0.30)', shadow: 'rgba(180, 83, 9, 0.24)' },
-  violet: { accent: '#6d28d9', light: '#8b5cf6', deep: '#5b21b6', soft: 'rgba(109, 40, 217, 0.10)', line: 'rgba(109, 40, 217, 0.28)', shadow: 'rgba(109, 40, 217, 0.24)' },
-};
-
-const FONT_STACKS: Record<Exclude<FontChoice, 'custom'>, string> = {
-  sans: "'Inter', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif",
-  serif: "'Noto Serif CJK SC', 'Noto Serif SC', 'Source Han Serif SC', 'AR PL UMing CN', 'Songti SC', STSong, SimSun, Georgia, serif",
-  mono: "ui-monospace, 'JetBrains Mono', 'Noto Sans Mono CJK SC', 'Sarasa Mono SC', Consolas, monospace",
-};
-
-const ACCENT_KEYS = ['--accent', '--accent-light', '--accent-deep', '--accent-soft', '--accent-line', '--accent-shadow'] as const;
-
-function applyAppearance(appearance: AppearanceSettings | undefined) {
-  if (!appearance) return;
-  const root = document.documentElement.style;
-  if (appearance.accent === 'theme') {
-    // Inline properties beat the palette blocks in styles.css, so "follow the palette" has to
-    // remove them rather than write the palette's own colour back.
-    for (const key of ACCENT_KEYS) root.removeProperty(key);
-  } else {
-    const tint = appearance.accent === 'custom'
-      ? tintFromHex(appearance.customAccent)
-      : ACCENTS[appearance.accent] ?? ACCENTS.red;
-    root.setProperty('--accent', tint.accent);
-    root.setProperty('--accent-light', tint.light);
-    root.setProperty('--accent-deep', tint.deep);
-    root.setProperty('--accent-soft', tint.soft);
-    root.setProperty('--accent-line', tint.line);
-    root.setProperty('--accent-shadow', tint.shadow);
-  }
-  root.setProperty('--panel-alpha', String(appearance.panelOpacity));
-  root.setProperty('--radius-unit', `${appearance.cornerRadius}px`);
-  root.setProperty('--fs-scale', String(appearance.fontScale));
-  root.setProperty('--font-ui', appearance.fontFamily === 'custom'
-    ? fontStackFor(appearance.customFont, FONT_STACKS.sans)
-    : FONT_STACKS[appearance.fontFamily] ?? FONT_STACKS.sans);
-}
 
 const HISTORY_KEY = 'local-play-history';
 const HISTORY_LIMIT = 200;
@@ -335,12 +291,7 @@ export function App() {
   useEffect(() => { applyAppearance(settings?.appearance); }, [settings?.appearance]);
   // The three custom palettes are plain CSS token overrides keyed off this attribute, so switching
   // a theme never re-mounts a component or touches playback state.
-  useEffect(() => {
-    const theme = settings?.theme;
-    const root = document.documentElement;
-    if (theme === 'noir' || theme === 'paper' || theme === 'glass') root.dataset.theme = theme;
-    else delete root.dataset.theme;
-  }, [settings?.theme]);
+  useEffect(() => { applyThemeAttribute(settings?.theme); }, [settings?.theme]);
 
   // Persist the queue without any playback URL; the renderer only stores what the IPC accepts.
   function persistQueue() {

@@ -3,8 +3,8 @@ import { Disc3, ListMusic, Mic2, Play, Search as SearchIcon, Trash2 } from 'luci
 import { Cover, PlaylistGrid, TrackTable, type TrackActions } from './components';
 import { mergeFavoritesPage } from './favorites-pagination.mjs';
 import type {
-  AccentName, AlbumDetail, AppearanceSettings, ArtistDetail, AppSettings, DiscoverFeed, FontChoice, LyricsCacheInfo,
-  Playlist, Result, SavedQueue, Track,
+  AccentName, AlbumDetail, AppearanceSettings, ArtistDetail, AppSettings, DiscoverFeed, FontChoice, LyricsAlign,
+  LyricsCacheInfo, LyricsTransition, Playlist, Result, SavedQueue, Track,
 } from '../shared/types';
 import { formatBytes } from '../shared/format.mjs';
 import { APP_DISPLAY_NAME } from '../shared/app-name.mjs';
@@ -20,7 +20,7 @@ export type LibraryContext = TrackActions & {
   setCloseBehavior(value: AppSettings['closeBehavior']): void;
   updateSettings(patch: Partial<AppSettings>): Promise<boolean>;
   /** Applies desktop-lyric opacity/lock/size to the overlay window and persists it. */
-  setLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }): Promise<void>;
+  setLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string; align?: LyricsAlign; transition?: LyricsTransition }): Promise<void>;
   settings: AppSettings | null;
   queue: SavedQueue | null;
   localHistory: Track[];
@@ -451,6 +451,16 @@ const LYRIC_PENDING_COLORS = [
   { value: '#ffffff', label: '纯白' },
 ];
 
+const LYRIC_ALIGNS: { value: LyricsAlign; label: string }[] = [
+  { value: 'left', label: '左' },
+  { value: 'center', label: '居中' },
+  { value: 'right', label: '右' },
+];
+const LYRIC_TRANSITIONS: { value: LyricsTransition; label: string }[] = [
+  { value: 'slide', label: '滚动' },
+  { value: 'fade', label: '淡入' },
+  { value: 'none', label: '无' },
+];
 const LYRIC_COLORS = [
   { value: '#ffe9eb', label: '暖白' },
   { value: '#ffffff', label: '纯白' },
@@ -510,6 +520,8 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
   const lyricsFontSize = ctx.settings?.lyricsFontSize ?? 30;
   const lyricsColor = ctx.settings?.lyricsColor ?? '#ffe9eb';
   const lyricsPendingColor = ctx.settings?.lyricsPendingColor ?? '#8b9099';
+  const lyricsAlign = ctx.settings?.lyricsAlign ?? 'center';
+  const lyricsTransition = ctx.settings?.lyricsTransition ?? 'slide';
 
   // Reading installed fonts needs a user gesture and the Electron font-access permission.
   const [lyricsCache, setLyricsCache] = useState<LyricsCacheInfo | null>(null);
@@ -770,6 +782,30 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
               style={{ '--pct': `${Math.round(((lyricsFontSize - 18) / 46) * 100)}%` } as CSSProperties}
               onChange={event => void ctx.setLyricsAppearance({ fontSize: Number(event.target.value) })} />
           </label>
+          {/* Three rows of lyrics can sit anywhere across the strip; centred is the default, and the
+              two edges are for people who park the overlay against a screen edge. */}
+          <div className="appearance-label">
+            <span>对齐</span>
+            <span className="hint">三行歌词的水平位置</span>
+          </div>
+          <div className="segmented" role="group" aria-label="桌面歌词对齐">
+            {LYRIC_ALIGNS.map(option => <button key={option.value} type="button"
+              className={lyricsAlign === option.value ? 'active' : ''}
+              aria-pressed={lyricsAlign === option.value}
+              onClick={() => void ctx.setLyricsAppearance({ align: option.value })}>{option.label}</button>)}
+          </div>
+          {/* The roll animates the incoming line; fade keeps the timing but drops the motion, and
+              none swaps text in place for anyone who finds movement distracting. */}
+          <div className="appearance-label">
+            <span>滚动效果</span>
+            <span className="hint">换行时歌词的出现方式</span>
+          </div>
+          <div className="segmented" role="group" aria-label="桌面歌词滚动效果">
+            {LYRIC_TRANSITIONS.map(option => <button key={option.value} type="button"
+              className={lyricsTransition === option.value ? 'active' : ''}
+              aria-pressed={lyricsTransition === option.value}
+              onClick={() => void ctx.setLyricsAppearance({ transition: option.value })}>{option.label}</button>)}
+          </div>
           {/* Presets cover the tints people actually pick (warm, white, accent, cool); the colour
               input stays for anything else, and both feed the same hex value the main process
               validates before it reaches the overlay's stylesheet. */}

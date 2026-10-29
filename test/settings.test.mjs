@@ -7,7 +7,7 @@ test('settings keep only known enum values and clamp volume', () => {
   assert.deepEqual(sanitizeSettings({ closeBehavior: 'tray', quality: 'lossless', volume: 5, repeatMode: 'one', shuffle: true, syncHistory: false }), {
     closeBehavior: 'tray', quality: 'lossless', volume: 1, repeatMode: 'one', shuffle: true, syncHistory: false,
     thirdPartyLyrics: true,
-    sidebarCollapsed: false, lyricsOpacity: 1, lyricsLocked: false, lyricsFontSize: 30, lyricsColor: '#ffe9eb', lyricsPendingColor: '#8b9099',
+    sidebarCollapsed: false, lyricsOpacity: 1, lyricsLocked: false, lyricsFontSize: 30, lyricsColor: '#ffe9eb', lyricsPendingColor: '#8b9099', lyricsAlign: 'center', lyricsTransition: 'slide',
     searchHistory: [],
     playbackRate: 1, theme: 'system', launchAtLogin: false,
     appearance: DEFAULT_SETTINGS.appearance,

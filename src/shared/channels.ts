@@ -22,6 +22,9 @@ export const channels = {
   musicDeletePlaylist: 'music:delete-playlist',
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
+  // Pushed to every window after a save: the helper windows are separate documents and cannot
+  // inherit the token values the main window writes on its own :root.
+  appearanceChanged: 'appearance:changed',
   fontsList: 'fonts:list',
   lyricsImport: 'lyrics:import',
   lyricsRemoveLocal: 'lyrics:remove-local',

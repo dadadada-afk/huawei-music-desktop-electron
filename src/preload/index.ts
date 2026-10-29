@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { channels } from '../shared/channels';
-import type { AuxWindowKind, DesktopApi, ExportRequest, LyricsAppearance, PlayerCommand, PlayerSnapshot } from '../shared/types';
+import type { AppearanceSettings, AuxWindowKind, DesktopApi, ExportRequest, LyricsAppearance, PlayerCommand, PlayerSnapshot } from '../shared/types';
 
 const api: DesktopApi = {
   auth: {
@@ -102,6 +102,11 @@ const api: DesktopApi = {
       const wrapped = (_event: Electron.IpcRendererEvent, state: LyricsAppearance) => listener(state);
       ipcRenderer.on(channels.lyricsAppearanceState, wrapped);
       return () => ipcRenderer.removeListener(channels.lyricsAppearanceState, wrapped);
+    },
+    onAppearance: listener => {
+      const wrapped = (_event: Electron.IpcRendererEvent, state: { theme?: string; appearance?: AppearanceSettings }) => listener(state);
+      ipcRenderer.on(channels.appearanceChanged, wrapped);
+      return () => ipcRenderer.removeListener(channels.appearanceChanged, wrapped);
     },
   },
   onNotice: listener => {

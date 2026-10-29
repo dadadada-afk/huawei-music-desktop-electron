@@ -420,6 +420,25 @@ try {
   });
   await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() === '#1f7a5a');
   assert.equal(JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8')).data.appearance.customAccent, '#1f7a5a');
+  // Desktop-lyric alignment and entrance animation: both are overlay-only settings, so the gate is
+  // that the choice reaches settings.json and that the overlay root carries the matching data-*.
+  await page.getByRole('button', { name: '左', exact: true }).click();
+  await page.getByRole('button', { name: '淡入', exact: true }).click();
+  await page.waitForFunction(async () => {
+    const result = await window.desktop.settings.get();
+    return result.ok && result.data.lyricsAlign === 'left' && result.data.lyricsTransition === 'fade';
+  });
+  assert.deepEqual(
+    [JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8')).data.lyricsAlign,
+      JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8')).data.lyricsTransition],
+    ['left', 'fade']);
+  await page.getByRole('button', { name: '居中', exact: true }).click();
+  await page.getByRole('button', { name: '滚动', exact: true }).click();
+  await page.waitForFunction(async () => {
+    const result = await window.desktop.settings.get();
+    return result.ok && result.data.lyricsAlign === 'center' && result.data.lyricsTransition === 'slide';
+  });
+
   // Installed fonts come from the main process, and the chosen family becomes the CSS stack head.
   const fonts = await page.evaluate(() => window.desktop.fonts.list());
   assert.equal(fonts.ok, true, 'fonts:list must answer');

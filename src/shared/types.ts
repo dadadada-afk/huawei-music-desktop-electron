@@ -134,6 +134,8 @@ export type AppSettings = {
   lyricsColor: string;
   /** Colour of the syllables not sung yet. Empty keeps the built-in cool grey. */
   lyricsPendingColor: string;
+  lyricsAlign: LyricsAlign;
+  lyricsTransition: LyricsTransition;
   /** Most recent search terms, newest first. */
   searchHistory: string[];
   /**
@@ -168,7 +170,21 @@ export type PlayerCommand = 'play-pause' | 'next' | 'previous' | 'volume-up' | '
 export type AuxWindowKind = 'mini' | 'lyrics';
 
 /** Applied state of the desktop lyric overlay. `locked` means click-through. */
-export type LyricsAppearance = { opacity: number; locked: boolean; fontSize: number; color: string; pendingColor: string };
+export type LyricsAlign = 'left' | 'center' | 'right';
+/**
+ * How a new line arrives. `slide` nudges it up from below the way a karaoke screen rolls; `fade`
+ * only changes opacity; `none` swaps the text in place with no motion at all.
+ */
+export type LyricsTransition = 'none' | 'fade' | 'slide';
+export type LyricsAppearance = {
+  opacity: number;
+  locked: boolean;
+  fontSize: number;
+  color: string;
+  pendingColor: string;
+  align: LyricsAlign;
+  transition: LyricsTransition;
+};
 
 /** What the main window broadcasts so the auxiliary windows can never drift out of sync. */
 export type PlayerSnapshot = {
@@ -295,9 +311,11 @@ export type DesktopApi = {
     onAuxState(listener: (state: { kind: AuxWindowKind; open: boolean }) => void): () => void;
     showMain(): void;
     /** Lock (click-through) and opacity of the desktop lyric overlay; callable from either window. */
-    setLyricsAppearance(input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }): Promise<Result<LyricsAppearance>>;
+    setLyricsAppearance(input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string; align?: LyricsAlign; transition?: LyricsTransition }): Promise<Result<LyricsAppearance>>;
     /** Lyrics window only: the applied appearance, so the toolbar never shows a stale state. */
     onLyricsAppearance(listener: (state: LyricsAppearance) => void): () => void;
+    /** Pushed after any settings save so the helper windows repaint with the new palette. */
+    onAppearance(listener: (state: { theme?: string; appearance?: AppearanceSettings }) => void): () => void;
   };
   onNotice(listener: (message: string) => void): () => void;
 };
