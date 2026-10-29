@@ -59,3 +59,39 @@ jobs:
             release/native/darwin-${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
+  release:
+    name: Publish macOS preview
+    needs: macos
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e 'if (process.env.RELEASE_TAG !== "v" + require("./package.json").version) process.exit(1)'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tinglan-macos-*-unsigned
+          path: artifacts
+      - name: Verify and collect both architectures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          for arch in arm64 x64; do
+            dir="artifacts/tinglan-macos-${arch}-unsigned"
+            (cd "$dir" && sha256sum --check SHA256SUMS)
+            cp "$dir"/*.dmg release-assets/
+            cat "$dir/SHA256SUMS" >> release-assets/SHA256SUMS
+          done
+      - name: Publish preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --verify-tag --prerelease --title "听澜 Tinglan $RELEASE_TAG（macOS 测试版）" \
+            --notes-file docs/RELEASE_NOTES.md

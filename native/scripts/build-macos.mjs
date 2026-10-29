@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, writeFile, copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import { signMacOS } from './sign-macos.mjs';
 
 if (process.platform !== 'darwin') throw new Error('This build requires macOS');
 const root = fileURLToPath(new URL('../../', import.meta.url));
+const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
 const contents = join(root, 'out/native/Tinglan.app/Contents');
 await mkdir(join(contents, 'MacOS'), { recursive: true });
 await mkdir(join(contents, 'Resources'), { recursive: true });
@@ -46,8 +47,8 @@ await writeFile(join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon.icns</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.0.1</string>
+<key>CFBundleVersion</key><string>${xml(version)}</string>
+<key>CFBundleShortVersionString</key><string>${xml(version)}</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 `);

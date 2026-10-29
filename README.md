@@ -89,7 +89,7 @@ macOS 应用构建：
 npm run build:native:mac
 ```
 
-GitHub Actions 在 macOS arm64 与 Intel x64 原生 runner 上分别构建 DMG 和 SHA256 校验和，仅保存构建产物，不自动发布 Release；Windows/Linux 暂不打包。
+GitHub Actions 在 macOS arm64 与 Intel x64 原生 runner 上分别构建 DMG 和 SHA256 校验和，普通分支仅保存构建产物，推送与 package.json 版本一致的 v* 标签时自动发布预发布 Release；Windows/Linux 暂不打包。
 
 平台依赖、打包与测试方式见[原生开发说明](native/README.md)。项目已移除旧 Electron 客户端，默认入口为原生版。
 
