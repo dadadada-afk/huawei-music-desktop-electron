@@ -125,7 +125,7 @@ try {
   assert.deepEqual(boundary.windowKeys, ['minimize', 'setCloseBehavior']);
   assert.deepEqual(boundary.playerKeys, [
     'broadcast', 'control', 'onAuxState', 'onCommand', 'onLyricsAppearance', 'onSeek', 'onState',
-    'requestState', 'seek', 'setLyricsAppearance', 'showMain', 'toggleAux',
+    'requestState', 'seek', 'setAuxPinned', 'setLyricsAppearance', 'showMain', 'toggleAux',
   ]);
   assert.equal(boundary.hasGenericInvoke, false, 'preload exposed a generic IPC entry point');
   assert.equal(boundary.nodeProcess, 'undefined');

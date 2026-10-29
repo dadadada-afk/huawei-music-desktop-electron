@@ -379,7 +379,21 @@ export function DiscoverPage({ ctx }: { ctx: LibraryContext }) {
   const daily = data.daily.tracks;
   return <section className="discover">
     <div className="discover-hero">
-      <div>
+      {/* The heading is the obvious thing to click, so it toggles the track list; the explicit
+          button in the action row does the same for anyone who reads buttons instead. */}
+      <div
+        className="discover-hero-text"
+        role="button"
+        tabIndex={0}
+        aria-expanded={openDaily}
+        title={openDaily ? '收起推荐歌曲' : '展开查看推荐歌曲'}
+        onClick={() => daily.length && setOpenDaily(value => !value)}
+        onKeyDown={event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          if (daily.length) setOpenDaily(value => !value);
+        }}
+      >
         <p className="eyebrow">Today · {data.daily.day}</p>
         <h2>今日推荐 {daily.length} 首</h2>
         <p className="page-sub">{data.daily.source === 'library'
@@ -388,6 +402,9 @@ export function DiscoverPage({ ctx }: { ctx: LibraryContext }) {
       </div>
       <div className="head-actions">
         <button className="primary" onClick={() => daily.length && ctx.play(daily, 0)} disabled={!daily.length}>播放全部</button>
+        <button className="ghost" aria-expanded={openDaily} onClick={() => setOpenDaily(value => !value)} disabled={!daily.length}>
+          {openDaily ? '收起歌曲' : `查看 ${daily.length} 首`}
+        </button>
         <button className="ghost" onClick={() => void load(true)} disabled={loading}>换一批</button>
       </div>
     </div>

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { activeLyricIndex } from '../lyrics.mjs';
 import { loadImage, renderShareCard, type ShareLine } from './share-card';
-import type { LyricsDoc, Playlist, Track } from '../shared/types';
+import type { LyricsDoc, PlayMode, Playlist, Track } from '../shared/types';
 
 export function formatDuration(seconds?: number): string {
   if (seconds === undefined || !Number.isFinite(seconds)) return '—';
@@ -207,8 +207,8 @@ type PlayerBarProps = {
   volume: number;
   quality: 'standard' | 'lossless';
   actualQuality: 'standard' | 'lossless' | 'unknown';
-  repeatMode: 'off' | 'all' | 'one';
-  shuffle: boolean;
+  /** One control, four states: 顺序 → 随机 → 列表循环 → 单曲循环. */
+  playMode: PlayMode;
   disabled: boolean;
   onToggle(): void;
   onPrevious(): void;
@@ -225,8 +225,7 @@ type PlayerBarProps = {
   onSleepTimer(minutes: number): void;
   onToggleMute(): void;
   onToggleQuality(): void;
-  onToggleRepeat(): void;
-  onToggleShuffle(): void;
+  onCyclePlayMode(): void;
   onToggleLyrics(): void;
   onToggleQueue(): void;
   onOpenStage(): void;
@@ -249,7 +248,9 @@ function percent(value: number, max: number): string {
 
 export function PlayerBar(props: PlayerBarProps) {
   const { track, playing, buffering, position, duration, volume } = props;
-  const repeatLabel = props.repeatMode === 'one' ? '单曲循环' : props.repeatMode === 'all' ? '列表循环' : '顺序播放';
+  const playModeLabel = props.playMode === 'shuffle' ? '随机播放'
+    : props.playMode === 'all' ? '列表循环'
+    : props.playMode === 'one' ? '单曲循环' : '顺序播放';
   const seekMax = duration || 1;
   return <footer className="player">
     <div className="now-playing">
@@ -271,20 +272,20 @@ export function PlayerBar(props: PlayerBarProps) {
     </div>
     <div className="player-controls">
       <div className="buttons">
-        <button aria-label="随机播放" aria-pressed={props.shuffle} className={props.shuffle ? 'active' : ''} onClick={props.onToggleShuffle} disabled={props.disabled} title={props.shuffle ? '随机播放：开' : '随机播放：关'}>
-          <Shuffle size={15} />
-        </button>
         <button aria-label="上一首" onClick={props.onPrevious} disabled={props.disabled}><SkipBack size={16} fill="currentColor" /></button>
         <button className="play-button" aria-label={playing ? '暂停' : '播放'} onClick={props.onToggle} disabled={props.disabled}>
           {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
         </button>
         <button aria-label="下一首" onClick={props.onNext} disabled={props.disabled}><SkipForward size={16} fill="currentColor" /></button>
-        <button aria-label={repeatLabel} aria-pressed={props.repeatMode !== 'off'} className={props.repeatMode !== 'off' ? 'active' : ''} onClick={props.onToggleRepeat} disabled={props.disabled} title={`${repeatLabel}（点击切换）`}>
-          {/* Each mode gets its own glyph: 顺序播放 and 列表循环 previously shared "↻" and were only
-              distinguishable by the highlight colour, which reads as "the button did nothing". The
-              off state used to be a bare arrow, which read as "skip" — a list glyph says "order"
-              instead, and shuffle stays the only button about randomness. */}
-          {props.repeatMode === 'one' ? <Repeat1 size={15} /> : props.repeatMode === 'all' ? <Repeat size={15} /> : <ListOrdered size={15} />}
+        <button aria-label={playModeLabel} className={props.playMode !== 'off' ? 'active' : ''} onClick={props.onCyclePlayMode}
+          disabled={props.disabled} title={`${playModeLabel}（点击切换：顺序 → 随机 → 列表循环 → 单曲循环）`}>
+          {/* Four states on one button. Two buttons used to split this between "shuffle" and
+              "repeat", which left 随机 unreachable from the repeat cycle and hid it behind an icon
+              the user did not recognise — the complaint that started this change. */}
+          {props.playMode === 'shuffle' ? <Shuffle size={15} />
+            : props.playMode === 'all' ? <Repeat size={15} />
+            : props.playMode === 'one' ? <Repeat1 size={15} />
+            : <ListOrdered size={15} />}
         </button>
       </div>
       <div className="progress">

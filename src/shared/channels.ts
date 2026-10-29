@@ -50,6 +50,7 @@ export const channels = {
   playerRequestState: 'player:request-state',
   playerSeek: 'player:seek',
   windowToggleAux: 'window:toggle-aux',
+  windowPinAux: 'window:pin-aux',
   windowAuxState: 'window:aux-state',
   // Both windows may change the overlay look: the lyrics window itself and the main window (which is
   // the only way back once the overlay is click-through).

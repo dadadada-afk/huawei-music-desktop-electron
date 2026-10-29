@@ -22,6 +22,8 @@ export function registerIpc(
     onCommand?: (command: PlayerCommand) => void;
     onSeek?: (seconds: number) => void;
     onToggleAux?: (kind: AuxWindowKind) => boolean;
+    /** Pins or unpins a helper window; returns the state that took effect. */
+    onPinAux?: (kind: AuxWindowKind, pinned: boolean) => boolean;
     onShowMain?: () => void;
     /** Applies and persists the desktop lyric overlay appearance; returns the applied state. */
     onLyricsAppearance?: (patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }) => LyricsAppearance | null;
@@ -329,6 +331,11 @@ export function registerIpc(
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
     if (input?.kind !== 'mini' && input?.kind !== 'lyrics') throw new Error('辅助窗口类型无效');
     return hooks.onToggleAux?.(input.kind) ?? false;
+  });
+  ipcMain.handle(channels.windowPinAux, async (event, input: { kind?: string; pinned?: boolean } = {}) => {
+    if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
+    if (input?.kind !== 'mini' && input?.kind !== 'lyrics') throw new Error('辅助窗口类型无效');
+    return hooks.onPinAux?.(input.kind, input.pinned === true) ?? false;
   });
   ipcMain.handle(channels.windowLyricsAppearance, async (event, input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string } = {}) => {
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');

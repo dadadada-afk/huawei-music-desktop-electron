@@ -54,7 +54,18 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 .mini-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .mini-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mini-artist { font-size: 11px; color: rgba(255, 255, 255, 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-lyric {
+  font-size: 11px;
+  /* Warm white against the dark plate, matching the overlay's "line being sung" colour so the two
+     windows read as the same thing. */
+  color: var(--dlyric-color, #ffe9eb);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-height: 14px;
+}
 .mini-time { font-size: 10px; color: rgba(255, 255, 255, 0.45); font-variant-numeric: tabular-nums; }
+
+.mini-controls button.is-active { color: #ff6b74; }
+.mini-controls button.is-active:hover { color: #ff8189; }
 
 .mini-progress {
   -webkit-app-region: no-drag;
@@ -93,8 +104,9 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
      from the outline and shadow below, which work on both bright and dark desktops. The hairline
      border exists only so the window's draggable bounds are visible — without it the overlay reads as
      floating text with no edges to grab or to align against. */
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(28, 30, 36, 0);
+  border: 1px solid rgba(255, 255, 255, 0);
+  transition: background 150ms ease, border-color 150ms ease;
   color: #fff;
   font-family: var(--font-ui, system-ui), sans-serif;
   display: flex;
@@ -105,7 +117,6 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   -webkit-app-region: drag;
 }
 .dlyric button { -webkit-app-region: no-drag; }
-.dlyric:hover { border-color: rgba(255, 255, 255, 0.42); }
 
 .dlyric-bar {
   position: absolute;
@@ -119,6 +130,15 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   transition: opacity 0.15s ease;
 }
 .dlyric:hover .dlyric-bar { opacity: 1; }
+.dlyric button { -webkit-app-region: no-drag; }
+
+/* Unlocked, the overlay is an invisible strip of text: without this the user has no idea where its
+   edges are, and everything they need (drag, resize, opacity, lock) lives at those edges. Locked
+   windows are click-through, so hover never fires and the hint stays out of the way. */
+.dlyric:hover {
+  background: rgba(28, 30, 36, 0.34);
+  border-color: rgba(150, 152, 160, 0.78);
+}
 .dlyric-track {
   flex: 1;
   min-width: 0;

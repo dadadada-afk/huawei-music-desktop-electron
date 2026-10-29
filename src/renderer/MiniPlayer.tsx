@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Maximize2, Music2, Pause, Play, SkipBack, SkipForward, X } from 'lucide-react';
+import { Maximize2, Music2, Pause, Pin, PinOff, Play, SkipBack, SkipForward, X } from 'lucide-react';
 import type { PlayerSnapshot } from '../shared/types';
 
 function clock(seconds: number): string {
@@ -24,7 +24,10 @@ export function MiniPlayer() {
     window.desktop.player.requestState();
     return unsubscribe;
   }, []);
+  // Local, not persisted: pinning is a mood, not a preference, and the window starts unpinned.
+  const [pinned, setPinned] = useState(false);
   const playing = state?.playing ?? false;
+  const activeLyric = state?.lyrics?.[state.lyricIndex] ?? '';
   const duration = state?.duration ?? 0;
   const ratio = duration > 0 ? Math.min(1, (state?.position ?? 0) / duration) : 0;
   return <div className="mini">
@@ -37,6 +40,7 @@ export function MiniPlayer() {
     <div className="mini-body">
       <div className="mini-title" title={state?.title ?? ''}>{state?.title || '还没有播放'}</div>
       <div className="mini-artist" title={state?.artists ?? ''}>{state?.artists || '在华为音乐里选一首'}</div>
+      <div className="mini-lyric" title={activeLyric}>{activeLyric}</div>
       <button
         className="mini-progress"
         aria-label="播放进度"
@@ -57,6 +61,17 @@ export function MiniPlayer() {
         {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
       </button>
       <button aria-label="下一首" onClick={() => window.desktop.player.control('next')}><SkipForward size={15} /></button>
+      <button
+        aria-label={pinned ? '取消置顶' : '窗口置顶'}
+        aria-pressed={pinned}
+        className={pinned ? 'is-active' : undefined}
+        onClick={async () => {
+          const next = !pinned;
+          setPinned(next);
+          const applied = await window.desktop.player.setAuxPinned('mini', next);
+          if (applied !== next) setPinned(applied);
+        }}
+      >{pinned ? <PinOff size={14} /> : <Pin size={14} />}</button>
       <button aria-label="回到主窗口" onClick={() => window.desktop.player.showMain()}><Maximize2 size={14} /></button>
       <button aria-label="关闭迷你播放器" onClick={() => void window.desktop.player.toggleAux('mini')}><X size={14} /></button>
     </div>

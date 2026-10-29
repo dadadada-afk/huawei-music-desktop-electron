@@ -160,6 +160,7 @@ async function createWindow(): Promise<void> {
       onCommand: command => sendPlayerCommand(command),
       onSeek: seconds => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channels.playerSeek, seconds); },
       onToggleAux: kind => toggleAuxWindow(kind),
+      onPinAux: (kind, pinned) => pinAuxWindow(kind, pinned),
       onShowMain: showMainWindow,
       onLyricsAppearance: patch => applyLyricsAppearance(patch),
       onRequestState: sender => { if (!sender.isDestroyed()) sender.send(channels.playerState, latestSnapshot); },
@@ -195,9 +196,9 @@ function lyricsWindowHeight(fontSize: number): number {
 function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
   const window = new BrowserWindow({
     width: kind === 'mini' ? 380 : 760,
-    height: kind === 'mini' ? 132 : lyricsWindowHeight(lyricsAppearance.fontSize),
+    height: kind === 'mini' ? 156 : lyricsWindowHeight(lyricsAppearance.fontSize),
     minWidth: kind === 'mini' ? 340 : 320,
-    minHeight: kind === 'mini' ? 132 : 120,
+    minHeight: kind === 'mini' ? 156 : 120,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -237,6 +238,16 @@ function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   void window.loadFile(join(__dirname, '../renderer/index.html'), { hash: kind }).catch(() => undefined);
   return window;
+}
+
+// The mini player is a normal window by default: it should not fight the user's own windows unless
+// they ask for it. The lyrics overlay is the opposite - it is only useful on top - so it starts
+// pinned and the button in its toolbar is a way to get it out of the way, not a way to enable it.
+function pinAuxWindow(kind: AuxWindowKind, pinned: boolean): boolean {
+  const target = auxWindows.get(kind);
+  if (!target || target.isDestroyed()) return false;
+  target.setAlwaysOnTop(pinned, 'floating');
+  return target.isAlwaysOnTop();
 }
 
 function toggleAuxWindow(kind: AuxWindowKind): boolean {

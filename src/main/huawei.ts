@@ -354,7 +354,26 @@ export async function resolvePlayback(session: Session, trackId: string, quality
 // project could derive: the gateway names the operation and DTO, but the DTO's required values are
 // undocumented and every probed combination returns an empty 400. So the daily list is computed
 // locally instead, from what the account already listens to, and is stable for one local day.
-const DISCOVER_PLAYLIST_KEYWORDS = ['华语流行', '轻音乐', '经典老歌', '民谣'];
+// A pool, not a fixed four: the same four keywords every day made "精选歌单" a still life. Each
+// day and each "换一批" now draws a different subset, so the shelf actually rotates.
+const DISCOVER_PLAYLIST_KEYWORDS = [
+  '华语流行', '轻音乐', '经典老歌', '民谣', '粤语', '摇滚', '爵士', '电子',
+  '古风', 'ACG', '器乐', 'R&B', '说唱', '影视原声', '怀旧', '治愈', '深夜', '通勤', '运动', '国风',
+];
+const DISCOVER_KEYWORD_COUNT = 4;
+
+/** Deterministic per day so re-opening the page is stable, offset by rotation so 换一批 changes it. */
+export function pickPlaylistKeywords(day: string, rotation: number): string[] {
+  const seed = [...day].reduce((total, char) => total + char.charCodeAt(0), rotation * 7);
+  const start = ((seed % DISCOVER_PLAYLIST_KEYWORDS.length) + DISCOVER_PLAYLIST_KEYWORDS.length) % DISCOVER_PLAYLIST_KEYWORDS.length;
+  const picked: string[] = [];
+  for (let step = 0; picked.length < DISCOVER_KEYWORD_COUNT; step += 1) {
+    // Step by 5: coprime with the pool length, so the four picks never collide.
+    const keyword = DISCOVER_PLAYLIST_KEYWORDS[(start + step * 5) % DISCOVER_PLAYLIST_KEYWORDS.length];
+    if (!picked.includes(keyword)) picked.push(keyword);
+  }
+  return picked;
+}
 const DAILY_MIX_SIZE = 30;
 const DAILY_ARTIST_SAMPLE = 6;
 
@@ -407,7 +426,7 @@ export async function discover(session: Session, day = localDayKey(), rotation =
   const topArtists = [...tally.values()].sort((a, b) => b.count - a.count);
 
   const playlistSearch = await Promise.all(
-    DISCOVER_PLAYLIST_KEYWORDS.map(keyword => client.searchByType(keyword, '4', { start: 0, limit: 12 }).catch(() => null)),
+    pickPlaylistKeywords(day, rotation).map(keyword => client.searchByType(keyword, '4', { start: 0, limit: 12 }).catch(() => null)),
   );
   const seenPlaylists = new Set<string>();
   const playlists: Playlist[] = [];

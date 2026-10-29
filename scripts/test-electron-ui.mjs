@@ -301,13 +301,21 @@ try {
   assert.equal(card.readUInt32BE(20), 1440, 'share card height');
   await page.getByRole('button', { name: '退出歌词页' }).click();
 
-  // Repeat mode cycles through the three documented states.
-  await page.getByRole('button', { name: '顺序播放' }).click();
-  await page.getByRole('button', { name: '列表循环' }).waitFor({ timeout: 3000 });
-  await page.getByRole('button', { name: '列表循环' }).click();
-  await page.getByRole('button', { name: '单曲循环' }).waitFor({ timeout: 3000 });
-  await page.getByRole('button', { name: '单曲循环' }).click();
-  await page.getByRole('button', { name: '顺序播放' }).waitFor({ timeout: 3000 });
+  // One control, four documented states: 顺序 → 随机 → 列表循环 → 单曲循环 → 顺序. The starting
+  // state comes from whatever the user last picked, so walk the ring from wherever it is now and
+  // assert each label appears before it is clicked.
+  const modeLabels = ['顺序播放', '随机播放', '列表循环', '单曲循环'];
+  let current = null;
+  for (const label of modeLabels) {
+    if (await page.getByRole('button', { name: label }).count()) { current = label; break; }
+  }
+  assert.ok(current, 'the player bar must expose one of the four play modes');
+  for (let step = 0; step < modeLabels.length; step += 1) {
+    const next = modeLabels[(modeLabels.indexOf(current) + 1) % modeLabels.length];
+    await page.getByRole('button', { name: current }).click();
+    await page.getByRole('button', { name: next }).waitFor({ timeout: 3000 });
+    current = next;
+  }
 
   // Playlists page and owned-playlist detail with a destructive confirmation.
   await page.getByRole('button', { name: '我的歌单' }).click();
@@ -354,13 +362,12 @@ try {
   await page.getByRole('button', { name: '清除本地导入' }).click();
   await page.getByText(/本地导入 0 首/).waitFor({ timeout: 5000 });
   // Re-selecting the current option fires no change event, so move away first when already on tray.
+  // The dropdown's own option text is the only user-visible confirmation, so the assertion that the
+  // change really landed is the stored JSON read below rather than a sentence on the page.
   const behavior = page.getByRole('combobox', { name: '关闭或最小化窗口时行为' });
-  if (await behavior.inputValue() === 'tray') {
-    await behavior.selectOption('quit');
-    await page.getByText('关闭窗口时将退出程序。').waitFor({ timeout: 5000 });
-  }
+  if (await behavior.inputValue() === 'tray') await behavior.selectOption('quit');
   await behavior.selectOption('tray');
-  await page.getByText('关闭窗口时将最小化到托盘。').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(400);
   // `app.getPath('userData')` is the isolated profile passed via --user-data-dir, so the store can
   // be read straight from the test process (Playwright's main-process evaluate cannot import modules).
   const stored = JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8'));
@@ -375,9 +382,9 @@ try {
   await page.getByRole('combobox', { name: '播放模式' }).selectOption('off');
   // Random-order playback is selectable as an explicit mode, not only via the toolbar toggle.
   await page.getByRole('combobox', { name: '播放模式' }).selectOption('shuffle');
-  await page.waitForFunction(() => document.querySelector('button[aria-label="随机播放"]')?.getAttribute('aria-pressed') === 'true');
+  await page.waitForFunction(() => !!document.querySelector('button[aria-label="随机播放"]'));
   await page.getByRole('combobox', { name: '播放模式' }).selectOption('off');
-  await page.waitForFunction(() => document.querySelector('button[aria-label="随机播放"]')?.getAttribute('aria-pressed') === 'false');
+  await page.waitForFunction(() => !!document.querySelector('button[aria-label="顺序播放"]'));
   // History sync is a real setting and must round-trip through the JSON store. The checkbox is
   // controlled by persisted state, so wait for the write instead of asserting Playwright's click.
   const historyToggle = page.getByRole('checkbox', { name: '同步播放到华为历史' });

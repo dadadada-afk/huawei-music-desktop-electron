@@ -18,7 +18,7 @@ import {
 import { fontStackFor, tintFromHex } from './theme.mjs';
 import { canRetryMediaFailure, reconcileTrackIndexes } from './track-reconcile.mjs';
 import type {
-  AccentName, AppSettings, AuthStatus, AppearanceSettings, FontChoice, LyricsDoc, Playback, Playlist, Result, SavedQueue, Track,
+  AccentName, AppSettings, AuthStatus, AppearanceSettings, FontChoice, LyricsDoc, Playback, PlayMode, Playlist, Result, SavedQueue, Track,
 } from '../shared/types';
 
 type View =
@@ -370,10 +370,11 @@ export function App() {
     } catch { /* Position state is best effort. */ }
   }, [position, duration, playbackRate]);
 
-  // Lyrics load once per track while any surface that shows them is visible. The desktop-lyrics
-  // window counts as one: it is a mirror, so it can only display what this window has fetched.
+  // Lyrics load once per track while any surface that shows them is visible. Both helper windows
+  // count: the overlay and the mini player are mirrors, so they can only display what this window
+  // has fetched - without them in this guard the mini player would show an empty lyric strip.
   useEffect(() => {
-    if (!lyricsOpen && !stageOpen && !auxOpen.lyrics) return;
+    if (!lyricsOpen && !stageOpen && !auxOpen.lyrics && !auxOpen.mini) return;
     const trackId = currentTrack?.id;
     if (!trackId) { setLyrics(null); return; }
     setLyricOffset(readLyricOffset(trackId));
@@ -403,7 +404,7 @@ export function App() {
       setLyrics(null); setLyricsLoading(false);
     });
     return () => { cancelled = true; };
-  }, [lyricsOpen, stageOpen, auxOpen.lyrics, currentTrack?.id, lyricRevision]);
+  }, [lyricsOpen, stageOpen, auxOpen.lyrics, auxOpen.mini, currentTrack?.id, lyricRevision]);
 
   async function importLocalLyrics() {
     const trackId = currentTrack?.id;
@@ -675,8 +676,10 @@ export function App() {
     return false;
   }
 
-  function toggleShuffle() {
-    const next = !shuffle;
+  // Shuffle and repeat are stored separately but behave as one choice: a player bar with two
+  // buttons about order makes the fourth state unreachable, which is exactly what the user hit.
+  const playMode: PlayMode = shuffle ? 'shuffle' : repeatMode;
+  function applyShuffle(next: boolean) {
     const activeIndex = order.current[cursorRef.current] ?? 0;
     const nextOrder = next ? buildShuffleOrder(queueRef.current.length, activeIndex) : identityOrder(queueRef.current.length);
     order.current = nextOrder;
@@ -685,14 +688,16 @@ export function App() {
     setCursor(cursorRef.current);
     setShuffle(next);
     playHistory.current = [];
-    void updateSettings({ shuffle: next });
-    setMessage(next ? '已开启随机播放。' : '已关闭随机播放。');
   }
-  function toggleRepeat() {
-    const next = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
-    setRepeatMode(next); repeatRef.current = next;
-    void updateSettings({ repeatMode: next });
-    setMessage(next === 'one' ? '单曲循环。' : next === 'all' ? '列表循环。' : '顺序播放。');
+  function cyclePlayMode() {
+    const next: PlayMode = playMode === 'off' ? 'shuffle'
+      : playMode === 'shuffle' ? 'all'
+      : playMode === 'all' ? 'one' : 'off';
+    applyShuffle(next === 'shuffle');
+    const nextRepeat = next === 'shuffle' ? 'off' : next;
+    setRepeatMode(nextRepeat); repeatRef.current = nextRepeat;
+    void updateSettings({ shuffle: next === 'shuffle', repeatMode: nextRepeat });
+    setMessage(next === 'off' ? '顺序播放。' : next === 'shuffle' ? '随机播放（乱序）。' : next === 'all' ? '列表循环。' : '单曲循环。');
   }
   function toggleQuality() {
     const next = quality === 'standard' ? 'lossless' : 'standard';
@@ -1144,8 +1149,6 @@ export function App() {
       volume={volume}
       quality={quality}
       actualQuality={actualQuality}
-      repeatMode={repeatMode}
-      shuffle={shuffle}
       disabled={!queue.length}
       onToggle={togglePlayback}
       onPrevious={goPrevious}
@@ -1160,8 +1163,8 @@ export function App() {
       onSleepTimer={setSleepTimer}
       onToggleMute={toggleMute}
       onToggleQuality={toggleQuality}
-      onToggleRepeat={toggleRepeat}
-      onToggleShuffle={toggleShuffle}
+      playMode={playMode}
+      onCyclePlayMode={cyclePlayMode}
       onToggleLyrics={() => setLyricsOpen(value => { if (!value) setQueueOpen(false); return !value; })}
       onToggleQueue={() => setQueueOpen(value => { if (!value) setLyricsOpen(false); return !value; })}
       onOpenStage={() => setStageOpen(true)}
