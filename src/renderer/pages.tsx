@@ -409,8 +409,10 @@ export function DiscoverPage({ ctx }: { ctx: LibraryContext }) {
       </div>
     </div>
 
-    {/* Playlists first: a 30-row table pushed them below the fold, so the page opened on a wall of
-        tracks and the recommendations nobody scrolled to never got seen. */}
+    {/* The list opens right under the card that was clicked. It used to sit after the playlists and
+        artists, so expanding it looked like nothing happened - the rows were a screen further down. */}
+    {openDaily && <TrackTable tracks={daily} actions={ctx} emptyText="收藏一些歌曲后，这里会出现为你挑的歌。" />}
+
     {data.playlists.length > 0 && <>
       <h3 className="section-title">精选歌单</h3>
       <PlaylistGrid playlists={data.playlists} onOpen={ctx.openPlaylist} />
@@ -427,14 +429,6 @@ export function DiscoverPage({ ctx }: { ctx: LibraryContext }) {
       </div>
     </>}
 
-    <div className="section-title-row">
-      <h3 className="section-title">今日推荐歌曲</h3>
-      <button className="ghost small" aria-expanded={openDaily}
-        onClick={() => setOpenDaily(value => !value)}>
-        {openDaily ? '收起' : `展开 ${daily.length} 首`}
-      </button>
-    </div>
-    {openDaily && <TrackTable tracks={daily} actions={ctx} emptyText="收藏一些歌曲后，这里会出现为你挑的歌。" />}
   </section>;
 }
 
@@ -520,10 +514,15 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
 
   return <section className="library settings-page">
     <nav className="settings-nav" aria-label="设置分类">
-      {tabs.map(item => <button key={item.key}
-        className={`settings-nav-item ${tab === item.key ? 'active' : ''}`}
-        aria-current={tab === item.key ? 'page' : undefined}
-        onClick={() => setTab(item.key)}>{item.label}</button>)}
+      {/* Sticky lives on the inner box: the outer column stretches to the full height of the
+          tallest panel, so the tab list can stay pinned for the whole scroll. Pinning the column
+          itself let it be pushed off the bottom of its own grid row. */}
+      <div className="settings-nav-inner">
+        {tabs.map(item => <button key={item.key}
+          className={`settings-nav-item ${tab === item.key ? 'active' : ''}`}
+          aria-current={tab === item.key ? 'page' : undefined}
+          onClick={() => setTab(item.key)}>{item.label}</button>)}
+      </div>
     </nav>
     <div className="settings-panel">
       {tab === 'playback' && <div className="settings-form">

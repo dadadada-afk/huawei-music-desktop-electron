@@ -16,11 +16,13 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 .mini {
   position: relative;
   display: grid;
-  grid-template-columns: 64px 1fr auto;
-  gap: 12px;
+  /* The controls column is fixed-size, everything else belongs to the text: the previous 64 px
+     cover and 12 px gaps left the title and lyric fighting for a sliver in the middle. */
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
   height: 100vh;
-  padding: 12px 14px;
+  padding: 8px 9px;
   box-sizing: border-box;
   background: rgba(28, 26, 26, 0.94);
   color: #f6f2ef;
@@ -42,8 +44,8 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 }
 
 .mini-cover {
-  width: 64px; height: 64px;
-  border-radius: 10px;
+  width: 50px; height: 50px;
+  border-radius: 9px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.08);
   display: grid; place-items: center;
@@ -51,7 +53,7 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 }
 .mini-cover img { width: 100%; height: 100%; object-fit: cover; }
 
-.mini-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mini-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .mini-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mini-artist { font-size: 11px; color: rgba(255, 255, 255, 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mini-lyric {
@@ -81,18 +83,18 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 }
 .mini-progress span { display: block; height: 100%; background: var(--accent, #c8202e); border-radius: inherit; }
 
-.mini-controls { display: flex; align-items: center; gap: 2px; }
+.mini-controls { display: flex; align-items: center; gap: 0; }
 .mini-controls button {
   border: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.72);
-  width: 26px; height: 26px;
-  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  width: 21px; height: 26px;
+  border-radius: 6px;
   display: grid; place-items: center;
   cursor: pointer;
 }
 .mini-controls button:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.mini-controls .mini-main { color: #fff; background: var(--accent, #c8202e); width: 30px; height: 30px; border-radius: 999px; }
+.mini-controls .mini-main { color: #fff; background: var(--accent, #c8202e); width: 28px; height: 28px; border-radius: 999px; }
 .mini-controls .mini-main:hover { filter: brightness(1.1); }
 
 .dlyric {
@@ -126,7 +128,7 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   gap: 4px;
   /* Faint by default rather than hidden: the close button is the only way out of this window, so it
      must be discoverable without the user first guessing that a hover reveals it. */
-  opacity: 0.42;
+  opacity: 0.72;
   transition: opacity 0.15s ease;
 }
 .dlyric:hover .dlyric-bar { opacity: 1; }
@@ -136,20 +138,29 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
    edges are, and everything they need (drag, resize, opacity, lock) lives at those edges. Locked
    windows are click-through, so hover never fires and the hint stays out of the way. */
 .dlyric:hover {
-  background: rgba(28, 30, 36, 0.34);
-  border-color: rgba(150, 152, 160, 0.78);
+  /* A light scrim, not a dark plate: the overlay sits on top of arbitrary windows, and a grey wash
+     reads as "this is a panel" on both light and dark backgrounds while the border does the work of
+     showing the exact bounds the window will resize to. */
+  background: rgba(120, 126, 138, 0.42);
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 8px 26px rgba(0, 0, 0, 0.35);
 }
 .dlyric-track {
   flex: 1;
   min-width: 0;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dlyric-bar button {
-  border: 0; background: rgba(255, 255, 255, 0.12); color: #fff;
-  width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(18, 20, 26, 0.72);
+  color: #fff;
+  width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
 }
+.dlyric-bar button:hover { background: var(--dlyric-accent, #c8202e); border-color: rgba(255, 255, 255, 0.85); }
 /* The shared `input[type='range']` rule sets width:100%, which outranks a bare class selector. */
 .dlyric-bar input.dlyric-opacity {
   -webkit-app-region: no-drag;

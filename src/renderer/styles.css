@@ -1086,12 +1086,17 @@ select:focus-visible,
   display: grid;
   grid-template-columns: 158px minmax(0, 1fr);
   gap: 26px;
-  align-items: start;
+  align-items: stretch;
   padding: 20px 22px 22px;
 }
-.settings-nav {
+.settings-nav { position: relative; }
+.settings-nav-inner {
   position: sticky;
-  top: 14px;
+  /* Must clear the sticky topbar, which is 115 px tall plus the 45 px content inset and paints at
+     z-index 3: a smaller offset parked the tab list underneath the page title, so the column looked
+     like it had scrolled away entirely. */
+  top: 168px;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 2px;

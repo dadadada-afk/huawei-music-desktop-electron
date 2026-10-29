@@ -195,10 +195,10 @@ function lyricsWindowHeight(fontSize: number): number {
 
 function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
   const window = new BrowserWindow({
-    width: kind === 'mini' ? 380 : 760,
-    height: kind === 'mini' ? 156 : lyricsWindowHeight(lyricsAppearance.fontSize),
-    minWidth: kind === 'mini' ? 340 : 320,
-    minHeight: kind === 'mini' ? 156 : 120,
+    width: kind === 'mini' ? 384 : 760,
+    height: kind === 'mini' ? 148 : lyricsWindowHeight(lyricsAppearance.fontSize),
+    minWidth: kind === 'mini' ? 360 : 320,
+    minHeight: kind === 'mini' ? 148 : 120,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
