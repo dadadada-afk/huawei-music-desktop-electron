@@ -6,7 +6,7 @@ import { registerIpc } from './ipc';
 import { AuthManager } from './auth-manager';
 import { createAuthManagerLifecycle } from './auth-manager-lifecycle.mjs';
 import { applyNodeProxy, electronBypassRules, proxyConfigurationProblem, proxyRules, readProxySettings } from './proxy.mjs';
-import { titleBarColors } from './titlebar.mjs';
+import { nativeThemeSource, titleBarColors } from './titlebar.mjs';
 import { MINI_DEFAULT_SIZE, sanitizeAuxState } from './aux-state.mjs';
 
 type AuxState = { mini?: { x: number; y: number; width: number; height: number }; lyrics?: { x: number; y: number } };
@@ -347,9 +347,9 @@ function toggleAuxWindow(kind: AuxWindowKind): boolean {
 // Desktop lyric overlay appearance. `locked` turns the window click-through so it never swallows a
 // click meant for the desktop behind it; that also removes every in-window control, which is why the
 // main window and the tray expose the same switch.
-const lyricsAppearance: LyricsAppearance = { opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb' };
+const lyricsAppearance: LyricsAppearance = { opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb', pendingColor: '#c8c8cf' };
 
-function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }): LyricsAppearance | null {
+function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }): LyricsAppearance | null {
   if (typeof patch.opacity === 'number') {
     lyricsAppearance.opacity = Math.min(1, Math.max(0.3, patch.opacity));
   }
@@ -359,6 +359,9 @@ function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; font
   }
   if (typeof patch.color === 'string' && /^#[0-9a-f]{6}$/i.test(patch.color)) {
     lyricsAppearance.color = patch.color.toLowerCase();
+  }
+  if (typeof patch.pendingColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.pendingColor)) {
+    lyricsAppearance.pendingColor = patch.pendingColor.toLowerCase();
   }
   const window = auxWindows.get('lyrics');
   if (window && !window.isDestroyed()) {
@@ -376,6 +379,7 @@ function applyLyricsAppearance(patch: { opacity?: number; locked?: boolean; font
     lyricsLocked: lyricsAppearance.locked,
     lyricsFontSize: lyricsAppearance.fontSize,
     lyricsColor: lyricsAppearance.color,
+    lyricsPendingColor: lyricsAppearance.pendingColor,
   }).catch(() => undefined);
   if (tray) tray.setContextMenu(buildTrayMenu());
   return { ...lyricsAppearance };
@@ -412,7 +416,7 @@ function buildTrayMenu(): Electron.Menu {
       label: '锁定桌面歌词（鼠标穿透）',
       type: 'checkbox',
       checked: lyricsAppearance.locked,
-      accelerator: LYRICS_LOCK_ACCELERATOR,
+      ...(shortcutStatus.lockAccelerator ? { accelerator: shortcutStatus.lockAccelerator } : {}),
       click: () => { applyLyricsAppearance({ locked: !lyricsAppearance.locked }); },
     },
     { type: 'separator' },
@@ -470,14 +474,23 @@ function registerMediaKeys(): void {
 // Locking the overlay makes it click-through, so the in-window unlock button disappears with the
 // rest of its controls. Without a system-wide chord the only ways back are the tray and the main
 // window, and the user asked for a shortcut instead of hunting for those.
-const LYRICS_LOCK_ACCELERATOR = 'CommandOrControl+Alt+L';
+// Alt+L is a common binding for other software and registration fails silently when it is taken,
+// which left the settings page advertising a chord the OS never gave us. The alternatives are tried
+// in order and whatever actually registered is reported back to the renderer.
+const LYRICS_LOCK_ACCELERATORS = ['CommandOrControl+Alt+L', 'CommandOrControl+Shift+L', 'CommandOrControl+Alt+K'];
 
 function registerLyricsLockShortcut(): void {
-  try {
-    const registered = globalShortcut.register(LYRICS_LOCK_ACCELERATOR,
-      () => { applyLyricsAppearance({ locked: !lyricsAppearance.locked }); });
-    if (!registered) console.warn(`[lyrics] ${LYRICS_LOCK_ACCELERATOR} is already taken; use the tray to unlock.`);
-  } catch { /* Unsupported on this platform. */ }
+  shortcutStatus.lockAccelerator = null;
+  for (const accelerator of LYRICS_LOCK_ACCELERATORS) {
+    try {
+      if (globalShortcut.register(accelerator,
+        () => { applyLyricsAppearance({ locked: !lyricsAppearance.locked }); })) {
+        shortcutStatus.lockAccelerator = accelerator;
+        return;
+      }
+    } catch { /* Unsupported on this platform; try the next chord. */ }
+  }
+  console.warn(`[lyrics] ${LYRICS_LOCK_ACCELERATORS[0]} and its fallbacks are taken; use the tray to unlock.`);
 }
 
 function failStartup(title: string, message: string): void {
@@ -523,12 +536,15 @@ app.whenReady().then(() => {
     }
     // themeSource is the single lever for the whole colour scheme: it drives prefers-color-scheme
     // in every renderer, so styles.css owns the switching and no window needs to be told twice.
-    nativeTheme.themeSource = settings.theme;
+    nativeTheme.themeSource = nativeThemeSource(settings.theme);
     // Restored before any helper window exists, so a reopened overlay starts locked/faded as saved.
     lyricsAppearance.opacity = settings.lyricsOpacity;
     lyricsAppearance.locked = settings.lyricsLocked;
     lyricsAppearance.fontSize = settings.lyricsFontSize;
     lyricsAppearance.color = settings.lyricsColor;
+    // Older settings files predate this field; falling back here keeps the overlay's gradient
+    // definition valid instead of interpolating the string "undefined" into a CSS colour stop.
+    lyricsAppearance.pendingColor = settings.lyricsPendingColor ?? '#8b9099';
   });
   configureApplicationMenu();
   // The tray reflects persisted lyric lock state, so create it only after settings restoration.

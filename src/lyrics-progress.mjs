@@ -25,10 +25,16 @@ export function lineFill(line, startMs, endMs, positionMs) {
       if (typeof segment.timeMs !== 'number') { fills.push(0); continue; }
       const segmentEnd = next && typeof next.timeMs === 'number' ? next.timeMs : startMs + span;
       const length = [...(segment.text ?? '')].length;
-      const ratio = segmentEnd > segment.timeMs
-        ? clamp01((positionMs - segment.timeMs) / (segmentEnd - segment.timeMs))
-        : (positionMs >= segment.timeMs ? 1 : 0);
-      for (let at = 0; at < length; at += 1) fills.push(ratio);
+      const duration = segmentEnd > segment.timeMs ? segmentEnd - segment.timeMs : 0;
+      // A segment stamp only marks where the run starts, so its characters share the run's time
+      // evenly. Giving them one ratio for the whole run lit up three syllables at once and the row
+      // moved in jumps the size of a word instead of a character.
+      const perChar = length ? duration / length : duration;
+      for (let at = 0; at < length; at += 1) {
+        fills.push(perChar > 0
+          ? clamp01((positionMs - (segment.timeMs + perChar * at)) / perChar)
+          : (positionMs >= segment.timeMs ? 1 : 0));
+      }
     }
     // Word marks that do not line up with the plain text would colour the wrong syllables, so the
     // row falls back to the even spread rather than drifting.
@@ -39,8 +45,10 @@ export function lineFill(line, startMs, endMs, positionMs) {
 }
 
 /**
- * Turns per-character ratios into CSS gradient stops: each character is solid up to its own
- * progress and dim after it, which is what makes the fill read as one sweeping highlight.
+ * Turns per-character ratios into CSS gradient stops. Every character is one solid block in either
+ * colour — a character that is more than half sung counts as sung. Splitting a single glyph between
+ * the two colours made the row look smudged at ordinary font sizes, so the switch happens per
+ * character, the way the karaoke rows in desktop players do it.
  *
  * @param {number[]} fills
  * @param {string} sung
@@ -49,22 +57,18 @@ export function lineFill(line, startMs, endMs, positionMs) {
  */
 export function fillGradient(fills, sung, pending) {
   if (!fills.length) return undefined;
+  // A missing colour would turn into the literal string "undefined" inside the gradient and the
+  // whole declaration is then dropped, leaving the row with no fill at all.
+  const sungColor = typeof sung === 'string' && sung ? sung : '#ffe9eb';
+  const pendingColor = typeof pending === 'string' && pending ? pending : '#8b9099';
   if (fills.every(value => value >= 1)) return undefined;
   const step = 100 / fills.length;
   const stops = [];
   fills.forEach((ratio, index) => {
     const from = index * step;
     const to = from + step;
-    if (ratio <= 0) {
-      stops.push(`${pending} ${from.toFixed(2)}%`, `${pending} ${to.toFixed(2)}%`);
-      return;
-    }
-    if (ratio >= 1) {
-      stops.push(`${sung} ${from.toFixed(2)}%`, `${sung} ${to.toFixed(2)}%`);
-      return;
-    }
-    const edge = from + step * ratio;
-    stops.push(`${sung} ${from.toFixed(2)}%`, `${sung} ${edge.toFixed(2)}%`, `${pending} ${edge.toFixed(2)}%`, `${pending} ${to.toFixed(2)}%`);
+    const color = ratio >= 0.5 ? sungColor : pendingColor;
+    stops.push(`${color} ${from.toFixed(2)}%`, `${color} ${to.toFixed(2)}%`);
   });
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }

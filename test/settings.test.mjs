@@ -7,7 +7,7 @@ test('settings keep only known enum values and clamp volume', () => {
   assert.deepEqual(sanitizeSettings({ closeBehavior: 'tray', quality: 'lossless', volume: 5, repeatMode: 'one', shuffle: true, syncHistory: false }), {
     closeBehavior: 'tray', quality: 'lossless', volume: 1, repeatMode: 'one', shuffle: true, syncHistory: false,
     thirdPartyLyrics: true,
-    sidebarCollapsed: false, lyricsOpacity: 1, lyricsLocked: false, lyricsFontSize: 30, lyricsColor: '#ffe9eb',
+    sidebarCollapsed: false, lyricsOpacity: 1, lyricsLocked: false, lyricsFontSize: 30, lyricsColor: '#ffe9eb', lyricsPendingColor: '#8b9099',
     searchHistory: [],
     playbackRate: 1, theme: 'system', launchAtLogin: false,
     appearance: DEFAULT_SETTINGS.appearance,
@@ -84,8 +84,9 @@ test('saved queue never persists playback urls', () => {
 test('appearance settings clamp ranges and reject unknown values', () => {
   assert.deepEqual(sanitizeAppearance({ accent: 'blue', panelOpacity: 0.7, cornerRadius: 18, fontScale: 1.15, fontFamily: 'serif' }),
     { accent: 'blue', panelOpacity: 0.7, cornerRadius: 18, fontScale: 1.15, fontFamily: 'serif', customAccent: '#c8202e', customFont: '' });
+  // An unknown accent falls back to the default, which is "follow the palette" rather than a colour.
   assert.deepEqual(sanitizeAppearance({ accent: 'pink', panelOpacity: 9, cornerRadius: -4, fontScale: 0.1, fontFamily: 'comic' }),
-    { accent: 'red', panelOpacity: 1, cornerRadius: 0, fontScale: 0.85, fontFamily: 'sans', customAccent: '#c8202e', customFont: '' });
+    { accent: 'theme', panelOpacity: 1, cornerRadius: 0, fontScale: 0.85, fontFamily: 'sans', customAccent: '#c8202e', customFont: '' });
   // A partial patch keeps every other stored field.
   assert.deepEqual(sanitizeAppearance({ accent: 'green' }, { accent: 'blue', panelOpacity: 0.8, cornerRadius: 4, fontScale: 1.1, fontFamily: 'mono' }),
     { accent: 'green', panelOpacity: 0.8, cornerRadius: 4, fontScale: 1.1, fontFamily: 'mono', customAccent: '#c8202e', customFont: '' });
@@ -96,7 +97,7 @@ test('a partial appearance patch never resets unrelated settings', () => {
   const next = sanitizeSettings({ appearance: { fontScale: 1.2 } }, sanitizeSettings({ quality: 'lossless' }));
   assert.equal(next.quality, 'lossless');
   assert.equal(next.appearance.fontScale, 1.2);
-  assert.equal(next.appearance.accent, 'red');
+  assert.equal(next.appearance.accent, 'theme');
 });
 
 test('a custom accent colour and font family are validated, not trusted', () => {

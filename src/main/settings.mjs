@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   lyricsLocked: false,
   lyricsFontSize: 30,
   lyricsColor: '#ffe9eb',
+  lyricsPendingColor: '#8b9099',
   // Newest first, capped so the store cannot grow without bound.
   searchHistory: [],
   playbackRate: 1,
@@ -22,7 +23,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   theme: 'system',
   launchAtLogin: false,
   appearance: Object.freeze({
-    accent: 'red',
+    accent: 'theme',
     panelOpacity: 1,
     cornerRadius: 11,
     fontScale: 1,
@@ -39,9 +40,11 @@ const REPEAT_MODES = new Set(['off', 'all', 'one']);
 // The menu offers exactly these steps, so a stored value outside the set is a corrupted file, not a
 // new preference: snap it back instead of honouring an arbitrary speed.
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
-const ACCENTS = new Set(['red', 'blue', 'green', 'amber', 'violet', 'custom']);
+const ACCENTS = new Set(['theme', 'red', 'blue', 'green', 'amber', 'violet', 'custom']);
 const FONT_CHOICES = new Set(['sans', 'serif', 'mono', 'custom']);
-const THEMES = new Set(['system', 'light', 'dark']);
+// The three custom palettes repaint the whole window from CSS tokens; system/light/dark still
+// follow the OS preference.
+const THEMES = new Set(['system', 'light', 'dark', 'noir', 'paper', 'glass']);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 function clampNumber(value, min, max, fallback) {
@@ -95,6 +98,7 @@ export function sanitizeSettings(input, fallback = DEFAULT_SETTINGS) {
   next.lyricsFontSize = clampNumber(raw.lyricsFontSize, 18, 64, base.lyricsFontSize);
   // Only a plain #rrggbb reaches the stylesheet; anything else falls back instead of being injected.
   if (typeof raw.lyricsColor === 'string' && HEX_COLOR.test(raw.lyricsColor)) next.lyricsColor = raw.lyricsColor.toLowerCase();
+  if (typeof raw.lyricsPendingColor === 'string' && HEX_COLOR.test(raw.lyricsPendingColor)) next.lyricsPendingColor = raw.lyricsPendingColor.toLowerCase();
   if (Array.isArray(raw.searchHistory)) {
     next.searchHistory = raw.searchHistory
       .filter(entry => typeof entry === 'string' && entry.trim().length > 0 && entry.length <= 80)
@@ -106,7 +110,7 @@ export function sanitizeSettings(input, fallback = DEFAULT_SETTINGS) {
   }
   if (typeof raw.playbackRate === 'number' && PLAYBACK_RATES.includes(raw.playbackRate)) next.playbackRate = raw.playbackRate;
   if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin;
-  if (THEMES.has(raw.theme)) next.theme = /** @type {'system' | 'light' | 'dark'} */ (raw.theme);
+  if (THEMES.has(raw.theme)) next.theme = /** @type {'system' | 'light' | 'dark' | 'noir' | 'paper' | 'glass'} */ (raw.theme);
   if (raw.appearance && typeof raw.appearance === 'object') {
     next.appearance = sanitizeAppearance(raw.appearance, base.appearance);
   }

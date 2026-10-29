@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, net } from 'electron'
 import { writeFile } from 'node:fs/promises';
 import { safeFileName, toCsv } from './csv.mjs';
 import { isSafeResourceUrl } from '../safe-media-url.mjs';
-import { titleBarColors } from './titlebar.mjs';
+import { nativeThemeSource, titleBarColors } from './titlebar.mjs';
 import { shortcutStatus } from './shortcut-status.mjs';
 import { channels } from '../shared/channels';
 import { AuthManager, isAllowedSender } from './auth-manager';
@@ -30,7 +30,7 @@ export function registerIpc(
     onAuxDragMove?: (sender: Electron.WebContents, point: { x: number; y: number }) => void;
     onAuxDragEnd?: (sender: Electron.WebContents) => void;
     /** Applies and persists the desktop lyric overlay appearance; returns the applied state. */
-    onLyricsAppearance?: (patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }) => LyricsAppearance | null;
+    onLyricsAppearance?: (patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }) => LyricsAppearance | null;
     /** Auxiliary windows ask for the current snapshot once their listener is attached. */
     onRequestState?: (sender: Electron.WebContents) => void;
   } = {},
@@ -246,7 +246,7 @@ export function registerIpc(
     guard(event);
     const next = await updateSettings(input);
     // Same fan-out as closeBehavior below: the store only persists, the shell applies the effect.
-    nativeTheme.themeSource = next.theme;
+    nativeTheme.themeSource = nativeThemeSource(next.theme);
     if (!window.isDestroyed() && process.platform === 'win32') {
       const palette = titleBarColors(next.theme, nativeTheme.shouldUseDarkColors);
       window.setTitleBarOverlay({ color: palette.background, symbolColor: palette.symbol, height: 34 });
@@ -312,7 +312,11 @@ export function registerIpc(
   // accelerator, and the renderer is the only place that can tell the user which one died.
   ipcMain.handle(channels.appShortcuts, async event => {
     guard(event);
-    return ok({ registered: [...shortcutStatus.registered], failed: [...shortcutStatus.failed] });
+    return ok({
+      registered: [...shortcutStatus.registered],
+      failed: [...shortcutStatus.failed],
+      lockAccelerator: shortcutStatus.lockAccelerator,
+    });
   });
   // The main window publishes; every helper window consumes. Nothing here mutates playback, so a
   // malformed or stale snapshot can only make a mirror look wrong until the next one arrives.
@@ -341,13 +345,14 @@ export function registerIpc(
     if (input?.kind !== 'mini' && input?.kind !== 'lyrics') throw new Error('辅助窗口类型无效');
     return hooks.onPinAux?.(input.kind, input.pinned === true) ?? false;
   });
-  ipcMain.handle(channels.windowLyricsAppearance, async (event, input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string } = {}) => {
+  ipcMain.handle(channels.windowLyricsAppearance, async (event, input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string } = {}) => {
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
-    const patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string } = {};
+    const patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string } = {};
     if (typeof input?.opacity === 'number' && Number.isFinite(input.opacity)) patch.opacity = input.opacity;
     if (typeof input?.locked === 'boolean') patch.locked = input.locked;
     if (typeof input?.fontSize === 'number' && Number.isFinite(input.fontSize)) patch.fontSize = input.fontSize;
     if (typeof input?.color === 'string') patch.color = input.color;
+    if (typeof input?.pendingColor === 'string') patch.pendingColor = input.pendingColor;
     const applied = hooks.onLyricsAppearance?.(patch);
     return applied ? ok(applied) : fail({ kind: 'unknown', message: '桌面歌词不可用', retryable: true });
   });

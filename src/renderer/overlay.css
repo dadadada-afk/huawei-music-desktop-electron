@@ -255,15 +255,34 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
      compares it with the two dimmer neighbours above and below it. The main window can override the
      tint, hence the custom property with the built-in warm white as the fallback. */
   color: var(--dlyric-color, #ffe9eb);
-  /* A four-way black outline plus a soft drop shadow: white text stays readable over a white
-     document as well as a dark desktop, without needing a background plate behind it. */
-  -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.55);
-  text-shadow:
-    -1px -1px 0 rgba(0, 0, 0, 0.85), 1px -1px 0 rgba(0, 0, 0, 0.85),
-    -1px 1px 0 rgba(0, 0, 0, 0.85), 1px 1px 0 rgba(0, 0, 0, 0.85),
-    0 2px 12px rgba(0, 0, 0, 0.7);
+  /* No stroke and no shadow here: both inherit into the gradient-filled layer, and either one paints
+     over a background-clip gradient and drags it towards black. The contrast outline lives in the
+     sibling layer below instead. */
+  position: relative;
+  display: block;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* Stroke-only copy under the gradient: a solid black glyph widened by its own stroke, so roughly
+   1.5px of it survives around the edges once the filled layer covers the middle. */
+/* The gradient stops are computed per character, so the filled layer has to be exactly as wide as
+   the text. A block-level span stretches to the whole window and every character then lands in the
+   wrong slice of the gradient. */
+.dlyric-current-fill { display: inline-block; }
+.dlyric-current-outline { display: block; }
+
+.dlyric-current-outline {
+  position: absolute;
+  inset: 0;
+  color: rgba(0, 0, 0, 0.92);
+  -webkit-text-fill-color: rgba(0, 0, 0, 0.92);
+  -webkit-text-stroke: 3px rgba(0, 0, 0, 0.92);
+  text-shadow: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.dlyric-current-fill { position: relative; text-shadow: none; -webkit-text-stroke: 0; vertical-align: top; }
 /* Sung line: still legible, clearly no longer the one being sung. */
 .dlyric-prev {
   font-size: calc(var(--dlyric-size, 30px) * 0.46);

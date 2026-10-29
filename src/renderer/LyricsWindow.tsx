@@ -9,7 +9,7 @@ import { fillGradient, lineFill } from '../lyrics-progress.mjs';
 // to be a highlight against. Frameless and always on top so it stays readable over other windows.
 export function LyricsWindow() {
   const [state, setState] = useState<PlayerSnapshot | null>(null);
-  const [look, setLook] = useState<LyricsAppearance>({ opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb' });
+  const [look, setLook] = useState<LyricsAppearance>({ opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb', pendingColor: '#c8c8cf' });
   // The whole strip drags. A locked overlay is click-through, so its mousedown never arrives anyway.
   const onDragStart = useWindowDrag();
   // Subscribe first, then ask: the main process may have broadcast before this window finished
@@ -39,7 +39,8 @@ export function LyricsWindow() {
     : [];
   // Unsung glyphs stay well above the neighbour lines' 0.5 alpha: the sung line has to read as the
   // brightest row on screen even when the playhead is still on its first syllable.
-  const gradient = fillGradient(fills, look.color, 'rgba(255, 255, 255, 0.72)');
+  const gradient = fillGradient(fills, look.color, look.pendingColor);
+  const lineText = current?.text || (state?.title ? '这首歌没有歌词' : '还没有播放');
   const apply = (patch: Partial<LyricsAppearance>) => {
     void window.desktop.player.setLyricsAppearance(patch);
   };
@@ -66,23 +67,16 @@ export function LyricsWindow() {
       <button aria-label="关闭桌面歌词" title="关闭" onClick={() => void window.desktop.player.toggleAux('lyrics')}><X size={13} /></button>
     </div>
     <div className="dlyric-prev" key={`p${index}`}>{previous}</div>
-    <div className="dlyric-current"
-      style={gradient
-        ? {
-          backgroundImage: gradient, WebkitBackgroundClip: 'text', backgroundClip: 'text',
-          color: 'transparent', WebkitTextFillColor: 'transparent',
-          // The four-way outline and shadow exist to keep the fill-readable colour legible over any
-          // desktop; with a transparent fill they paint the glyphs solid black instead, so the karaoke
-          // row keeps only a soft drop shadow for contrast.
-          // A stroke hugs the outline, so the gradient inside the glyphs survives. Text-shadow and
-          // filter: drop-shadow both paint copies of the whole glyph, which is why the row used to
-          // come out solid black once the fill went transparent.
-          WebkitTextStroke: '0.8px rgba(0, 0, 0, 0.8)',
-          textShadow: 'none',
-          filter: 'none',
-        }
+    {/* Two stacked copies. The lower one is a solid black glyph widened by its stroke, which supplies
+        the outline; the upper one is the karaoke gradient. One layer cannot carry both: a text-shadow
+        or a stroke on a background-clip gradient paints over the fill and the row goes dark. */}
+    <div className="dlyric-current" key={`c${index}`}>
+      <span className="dlyric-current-outline" aria-hidden="true">{lineText}</span>
+      <span className="dlyric-current-fill" style={gradient
+        ? { backgroundImage: gradient, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', WebkitTextFillColor: 'transparent' }
         : undefined}>
-      {current?.text || (state?.title ? '这首歌没有歌词' : '还没有播放')}
+        {lineText}
+      </span>
     </div>
     <div className="dlyric-next" key={`n${index}`}>{next}</div>
     {/* Transport lives at the bottom edge so the tool buttons above stay about appearance. */}

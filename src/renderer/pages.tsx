@@ -20,7 +20,7 @@ export type LibraryContext = TrackActions & {
   setCloseBehavior(value: AppSettings['closeBehavior']): void;
   updateSettings(patch: Partial<AppSettings>): Promise<boolean>;
   /** Applies desktop-lyric opacity/lock/size to the overlay window and persists it. */
-  setLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }): Promise<void>;
+  setLyricsAppearance(patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }): Promise<void>;
   settings: AppSettings | null;
   queue: SavedQueue | null;
   localHistory: Track[];
@@ -30,7 +30,8 @@ export type LibraryContext = TrackActions & {
 const PAGE = 50;
 
 // Swatch colours mirror the runtime accent map in App.tsx; only the label/swatch is used here.
-const ACCENT_SWATCHES: Record<Exclude<AccentName, 'custom'>, { label: string; swatch: string }> = {
+// 'theme' is rendered separately: its swatch is the palette's own accent, so a fixed hex would lie.
+const ACCENT_SWATCHES: Record<Exclude<AccentName, 'custom' | 'theme'>, { label: string; swatch: string }> = {
   red: { label: '绯红', swatch: '#c8202e' },
   blue: { label: '靛蓝', swatch: '#2563eb' },
   green: { label: '松绿', swatch: '#15803d' },
@@ -434,6 +435,22 @@ export function DiscoverPage({ ctx }: { ctx: LibraryContext }) {
 
 // The overlay's default warm white plus the tints that keep contrast over both bright and dark
 // desktops. Anything else goes through the colour input next to them.
+// Grey values, not tints: the unsung half of a line has to sink behind the sung one, so the presets
+// stay neutral and let the accent colour stay exclusive to the syllable under the playhead.
+// The three named palettes, each with the two or three colours that identify it at a glance.
+const PALETTES = [
+  { value: 'noir', label: '墨金', hint: '深墨底 · 暖金强调', bg: '#151310', surface: '#1d1a16', accent: '#c8a862', ink: '#f0e9da' },
+  { value: 'paper', label: '宣纸', hint: '米白底 · 朱红强调', bg: '#f4f0e6', surface: '#fbf8f1', accent: '#b3402a', ink: '#24211b' },
+  { value: 'glass', label: '夜航', hint: '深蓝底 · 冷蓝强调', bg: '#101426', surface: '#1a1f3a', accent: '#8ea6ff', ink: '#edf0fa' },
+] as const;
+
+const LYRIC_PENDING_COLORS = [
+  { value: '#8b9099', label: '冷灰' },
+  { value: '#9aa0aa', label: '中灰' },
+  { value: '#6b7280', label: '深灰' },
+  { value: '#ffffff', label: '纯白' },
+];
+
 const LYRIC_COLORS = [
   { value: '#ffe9eb', label: '暖白' },
   { value: '#ffffff', label: '纯白' },
@@ -442,6 +459,17 @@ const LYRIC_COLORS = [
   { value: '#22c55e', label: '绿' },
   { value: '#f59e0b', label: '琥珀' },
 ];
+
+// Electron accelerators spell the modifiers out; a shortcut list has to read like the key caps.
+function chordPart(part: string): string {
+  if (part === 'CommandOrControl' || part === 'Control') return 'Ctrl';
+  if (part === 'Alt' || part === 'Shift' || part === 'Meta' || part === 'Super') return part;
+  return part.length === 1 ? part.toUpperCase() : part;
+}
+
+function chordLabel(accelerator: string): string {
+  return accelerator.split('+').map(chordPart).join(' + ');
+}
 
 export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings = ctx.settings;
   const [tab, setTab] = useState<'playback' | 'appearance' | 'shortcuts' | 'about'>('playback');
@@ -464,10 +492,24 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
   const theme = settings?.theme ?? 'system';
   // The overlay appearance is owned by the main process, not by `appearance`, so it is read from
   // settings directly and written through the player channel that applies it to the live window.
+  // Which chord the main process actually owns. Alt+L is often taken by another program, in which
+  // case the fallbacks were used; showing a hard-coded "Ctrl+Alt+L" advertised a shortcut that did
+  // nothing, which is exactly what the user reported.
+  const [lockChord, setLockChord] = useState<string | null>(null);
+  useEffect(() => {
+    void window.desktop.app.shortcuts().then(result => { if (result.ok) setLockChord(result.data.lockAccelerator); });
+  }, []);
+  const lockChordLabel = lockChord ? chordLabel(lockChord) : '未注册';
+  const lockKeys = lockChord
+    ? lockChord.split('+').map(part => <kbd key={part}>{chordPart(part)}</kbd>).reduce<React.ReactNode[]>(
+      (acc, node, i) => (i === 0 ? [node] : [...acc, ' + ', node]), [])
+    : <span className="kbd-missing">未注册（被其它程序占用）</span>;
+  const lockRegistered = lockChord !== null;
   const lyricsOpacity = ctx.settings?.lyricsOpacity ?? 1;
   const lyricsLocked = !!ctx.settings?.lyricsLocked;
   const lyricsFontSize = ctx.settings?.lyricsFontSize ?? 30;
   const lyricsColor = ctx.settings?.lyricsColor ?? '#ffe9eb';
+  const lyricsPendingColor = ctx.settings?.lyricsPendingColor ?? '#8b9099';
 
   // Reading installed fonts needs a user gesture and the Electron font-access permission.
   const [lyricsCache, setLyricsCache] = useState<LyricsCacheInfo | null>(null);
@@ -604,13 +646,48 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
             ))}
           </div>
         </div>
+        {/* Whole-window palettes. Each card previews its own three surfaces, so the choice can be
+            made without applying anything first. */}
+        <div className="appearance-field">
+          <div className="appearance-label">
+            <span>配色方案</span>
+            <span className="hint">整套界面配色，切换不影响播放与队列</span>
+          </div>
+          <div className="theme-cards" role="group" aria-label="配色方案">
+            {PALETTES.map(palette => (
+              <button key={palette.value}
+                className={`theme-card ${theme === palette.value ? 'active' : ''}`}
+                aria-pressed={theme === palette.value}
+                title={palette.hint}
+                onClick={() => {
+                  void ctx.updateSettings({ theme: palette.value });
+                  // A palette carries its own accent; keeping the previous tint would leave the
+                  // window half-repainted. An explicit custom colour is the one thing we keep.
+                  if (accent !== 'custom') updateAppearance({ accent: 'theme' });
+                }}>
+                <span className="theme-card-preview" aria-hidden="true"
+                  style={{ background: palette.bg }}>
+                  <i style={{ background: palette.surface }} />
+                  <b style={{ background: palette.accent }} />
+                  <u style={{ background: palette.ink }} />
+                </span>
+                <span className="theme-card-name">{palette.label}</span>
+                <span className="theme-card-hint">{palette.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="appearance-field">
           <div className="appearance-label">
             <span>主题色</span>
             <span className="hint">播放按钮、当前曲目、高亮选中项</span>
           </div>
           <div className="accent-swatches" role="group" aria-label="主题色">
-            {(Object.keys(ACCENT_SWATCHES) as Exclude<AccentName, 'custom'>[]).map(name => <button key={name}
+            <button className={`accent-swatch accent-swatch-theme ${accent === 'theme' ? 'active' : ''}`}
+              title="跟随配色方案"
+              aria-label="主题色 跟随配色方案" aria-pressed={accent === 'theme'}
+              onClick={() => updateAppearance({ accent: 'theme' })}>A</button>
+            {(Object.keys(ACCENT_SWATCHES) as Exclude<AccentName, 'custom' | 'theme'>[]).map(name => <button key={name}
               className={`accent-swatch ${accent === name ? 'active' : ''}`}
               style={{ background: ACCENT_SWATCHES[name].swatch, color: ACCENT_SWATCHES[name].swatch }}
               aria-label={`主题色 ${ACCENT_SWATCHES[name].label}`}
@@ -710,6 +787,22 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
               value={/^#[0-9a-f]{6}$/i.test(lyricsColor) ? lyricsColor : '#ffe9eb'}
               onChange={event => void ctx.setLyricsAppearance({ color: event.target.value })} />
           </div>
+          {/* Two colours, the way desktop players split a karaoke line: the sung half and the rest.
+              One colour alone cannot say "this syllable is next" without also dimming the row. */}
+          <div className="appearance-label">
+            <span>未唱部分<small>{lyricsPendingColor}</small></span>
+            <span className="hint">同一句里还没唱到的字</span>
+          </div>
+          <div className="lyrics-colors">
+            {LYRIC_PENDING_COLORS.map(option => <button key={option.value} type="button"
+              className={`lyrics-color ${lyricsPendingColor.toLowerCase() === option.value ? 'active' : ''}`}
+              style={{ background: option.value }} title={option.label}
+              aria-label={`未唱部分颜色 ${option.label}`} aria-pressed={lyricsPendingColor.toLowerCase() === option.value}
+              onClick={() => void ctx.setLyricsAppearance({ pendingColor: option.value })} />)}
+            <input type="color" className="lyrics-color-picker" aria-label="自定义未唱部分颜色"
+              value={/^#[0-9a-f]{6}$/i.test(lyricsPendingColor) ? lyricsPendingColor : '#8b9099'}
+              onChange={event => void ctx.setLyricsAppearance({ pendingColor: event.target.value })} />
+          </div>
           {/* A locked overlay ignores the mouse, so this switch is the only way back — the overlay's
               own toolbar becomes unreachable the moment it is locked. */}
           <label className="settings-toggle">
@@ -717,7 +810,7 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
             <input type="checkbox" aria-label="锁定桌面歌词" checked={lyricsLocked}
               onChange={event => void ctx.setLyricsAppearance({ locked: event.target.checked })} />
           </label>
-          <p className="hint">全局快捷键 <strong>Ctrl + Alt + L</strong> 可随时锁定 / 解锁桌面歌词。</p>
+          <p className="hint">全局快捷键 <strong>{lockChordLabel}</strong> 可随时锁定 / 解锁桌面歌词。</p>
         </div>
         <button className="ghost" onClick={() => updateAppearance({ accent: 'red', panelOpacity: 1, cornerRadius: 11, fontScale: 1, fontFamily: 'sans' })}>恢复默认外观</button>
       </div>}
@@ -737,7 +830,7 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
             <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>→</kbd></td><td>下一首</td><td>全局</td></tr>
             <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>↑</kbd></td><td>音量加</td><td>全局</td></tr>
             <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>↓</kbd></td><td>音量减</td><td>全局</td></tr>
-            <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>L</kbd></td><td>锁定 / 解锁桌面歌词</td><td>全局</td></tr>
+            <tr><td>{lockKeys}</td><td>锁定 / 解锁桌面歌词</td><td>{lockRegistered ? '全局' : '应用内'}</td></tr>
             <tr><td>键盘媒体键</td><td>播放 / 上一首 / 下一首</td><td>全局</td></tr>
             <tr><td><kbd>Space</kbd></td><td>播放 / 暂停（焦点在应用内时）</td><td>应用内</td></tr>
             <tr><td><kbd>Esc</kbd></td><td>关闭当前弹层或正在播放页</td><td>应用内</td></tr>

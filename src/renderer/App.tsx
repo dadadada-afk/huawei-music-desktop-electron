@@ -44,7 +44,8 @@ const NAV_ICONS = {
 };
 
 // Runtime tint map: the CSS keeps red as its default so the first paint is already correct.
-const ACCENTS: Record<Exclude<AccentName, 'custom'>, { accent: string; light: string; deep: string; soft: string; line: string; shadow: string }> = {
+// 'theme' has no entry on purpose — it means "leave the palette's own accent alone".
+const ACCENTS: Record<Exclude<AccentName, 'custom' | 'theme'>, { accent: string; light: string; deep: string; soft: string; line: string; shadow: string }> = {
   red: { accent: '#c8202e', light: '#e0364a', deep: '#a51724', soft: 'rgba(200, 32, 46, 0.09)', line: 'rgba(200, 32, 46, 0.28)', shadow: 'rgba(200, 32, 46, 0.28)' },
   blue: { accent: '#2563eb', light: '#3b82f6', deep: '#1d4ed8', soft: 'rgba(37, 99, 235, 0.10)', line: 'rgba(37, 99, 235, 0.30)', shadow: 'rgba(37, 99, 235, 0.26)' },
   green: { accent: '#15803d', light: '#22a05a', deep: '#166534', soft: 'rgba(21, 128, 61, 0.10)', line: 'rgba(21, 128, 61, 0.28)', shadow: 'rgba(21, 128, 61, 0.24)' },
@@ -58,18 +59,26 @@ const FONT_STACKS: Record<Exclude<FontChoice, 'custom'>, string> = {
   mono: "ui-monospace, 'JetBrains Mono', 'Noto Sans Mono CJK SC', 'Sarasa Mono SC', Consolas, monospace",
 };
 
+const ACCENT_KEYS = ['--accent', '--accent-light', '--accent-deep', '--accent-soft', '--accent-line', '--accent-shadow'] as const;
+
 function applyAppearance(appearance: AppearanceSettings | undefined) {
   if (!appearance) return;
   const root = document.documentElement.style;
-  const tint = appearance.accent === 'custom'
-    ? tintFromHex(appearance.customAccent)
-    : ACCENTS[appearance.accent] ?? ACCENTS.red;
-  root.setProperty('--accent', tint.accent);
-  root.setProperty('--accent-light', tint.light);
-  root.setProperty('--accent-deep', tint.deep);
-  root.setProperty('--accent-soft', tint.soft);
-  root.setProperty('--accent-line', tint.line);
-  root.setProperty('--accent-shadow', tint.shadow);
+  if (appearance.accent === 'theme') {
+    // Inline properties beat the palette blocks in styles.css, so "follow the palette" has to
+    // remove them rather than write the palette's own colour back.
+    for (const key of ACCENT_KEYS) root.removeProperty(key);
+  } else {
+    const tint = appearance.accent === 'custom'
+      ? tintFromHex(appearance.customAccent)
+      : ACCENTS[appearance.accent] ?? ACCENTS.red;
+    root.setProperty('--accent', tint.accent);
+    root.setProperty('--accent-light', tint.light);
+    root.setProperty('--accent-deep', tint.deep);
+    root.setProperty('--accent-soft', tint.soft);
+    root.setProperty('--accent-line', tint.line);
+    root.setProperty('--accent-shadow', tint.shadow);
+  }
   root.setProperty('--panel-alpha', String(appearance.panelOpacity));
   root.setProperty('--radius-unit', `${appearance.cornerRadius}px`);
   root.setProperty('--fs-scale', String(appearance.fontScale));
@@ -324,6 +333,14 @@ export function App() {
   useEffect(() => { if (audio.current) audio.current.volume = volume; }, [volume]);
 
   useEffect(() => { applyAppearance(settings?.appearance); }, [settings?.appearance]);
+  // The three custom palettes are plain CSS token overrides keyed off this attribute, so switching
+  // a theme never re-mounts a component or touches playback state.
+  useEffect(() => {
+    const theme = settings?.theme;
+    const root = document.documentElement;
+    if (theme === 'noir' || theme === 'paper' || theme === 'glass') root.dataset.theme = theme;
+    else delete root.dataset.theme;
+  }, [settings?.theme]);
 
   // Persist the queue without any playback URL; the renderer only stores what the IPC accepts.
   function persistQueue() {
@@ -799,6 +816,13 @@ export function App() {
         setPosition(element.currentTime);
         return;
       }
+      // The global chord is unavailable when another program already owns it, so the same
+      // combination is handled in-window as a fallback: focused app, working shortcut.
+      if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        void window.desktop.player.setLyricsAppearance({ locked: !lyricsAppearanceRef.current });
+        return;
+      }
       if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
         event.preventDefault();
         const step = event.key === 'ArrowUp' ? 0.05 : -0.05;
@@ -808,6 +832,11 @@ export function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  // Read by the in-window shortcut, which lives in an effect that must not re-subscribe on every
+  // appearance change.
+  const lyricsAppearanceRef = useRef(false);
+  useEffect(() => { lyricsAppearanceRef.current = !!settings?.lyricsLocked; }, [settings?.lyricsLocked]);
 
   function favoriteOf(trackId: string): boolean | undefined { return knownFavoriteIds.has(trackId) ? favoriteIds.has(trackId) : undefined; }
   function setFavoriteState(trackId: string, favorite: boolean) {
@@ -986,7 +1015,11 @@ export function App() {
       // colour while the overlay had already changed.
       if (!result.ok) { setMessage('桌面歌词设置未生效，请重试。'); return; }
       const applied = result.data;
-      setSettings(prev => prev ? { ...prev, lyricsOpacity: applied.opacity, lyricsLocked: applied.locked, lyricsFontSize: applied.fontSize, lyricsColor: applied.color } : prev);
+      setSettings(prev => prev ? {
+        ...prev,
+        lyricsOpacity: applied.opacity, lyricsLocked: applied.locked, lyricsFontSize: applied.fontSize,
+        lyricsColor: applied.color, lyricsPendingColor: applied.pendingColor,
+      } : prev);
     }).catch(() => setMessage('桌面歌词设置未生效，请重试。')),
   };
 

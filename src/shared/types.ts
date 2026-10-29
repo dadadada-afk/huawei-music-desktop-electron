@@ -90,7 +90,9 @@ export type Playback = {
 
 export type RepeatMode = 'off' | 'all' | 'one';
 export type Quality = 'standard' | 'lossless';
-export type AccentName = 'red' | 'blue' | 'green' | 'amber' | 'violet' | 'custom';
+// 'theme' means "no override": the accent comes from whichever palette (light/dark/noir/paper/glass)
+// is active, which is what makes a palette switch repaint the whole window.
+export type AccentName = 'theme' | 'red' | 'blue' | 'green' | 'amber' | 'violet' | 'custom';
 export type FontChoice = 'sans' | 'serif' | 'mono' | 'custom';
 
 export type AppearanceSettings = {
@@ -130,6 +132,8 @@ export type AppSettings = {
   lyricsFontSize: number;
   /** Colour of the line being sung, as #rrggbb. Empty means the built-in warm white. */
   lyricsColor: string;
+  /** Colour of the syllables not sung yet. Empty keeps the built-in cool grey. */
+  lyricsPendingColor: string;
   /** Most recent search terms, newest first. */
   searchHistory: string[];
   /**
@@ -138,10 +142,12 @@ export type AppSettings = {
    */
   playbackRate: number;
   /**
-   * Colour scheme. 'system' follows the OS setting; 'light' and 'dark' pin the app. Either way the
-   * main process only forwards it to nativeTheme.themeSource — CSS does the actual switching.
+   * Colour scheme. 'system' follows the OS setting; 'light' and 'dark' pin the app. The three named
+   * palettes ('noir' ink-and-gold, 'paper' rice paper, 'glass' night flight) repaint every window by
+   * overriding the CSS tokens, which is why the main process only has to project them onto a native
+   * theme source for scrollbars and dialogs.
    */
-  theme: 'system' | 'light' | 'dark';
+  theme: 'system' | 'light' | 'dark' | 'noir' | 'paper' | 'glass';
   /**
    * Start with Windows. Honoured through app.setLoginItemSettings, which registers the executable
    * itself; the --hidden argument it passes keeps the launch quiet in the tray.
@@ -162,7 +168,7 @@ export type PlayerCommand = 'play-pause' | 'next' | 'previous' | 'volume-up' | '
 export type AuxWindowKind = 'mini' | 'lyrics';
 
 /** Applied state of the desktop lyric overlay. `locked` means click-through. */
-export type LyricsAppearance = { opacity: number; locked: boolean; fontSize: number; color: string };
+export type LyricsAppearance = { opacity: number; locked: boolean; fontSize: number; color: string; pendingColor: string };
 
 /** What the main window broadcasts so the auxiliary windows can never drift out of sync. */
 export type PlayerSnapshot = {
@@ -266,7 +272,7 @@ export type DesktopApi = {
   app: {
     quit(): Promise<void>;
     /** The global chords the main process actually owns; empty entries mean another app took them. */
-    shortcuts(): Promise<Result<{ registered: string[]; failed: string[] }>>;
+    shortcuts(): Promise<Result<{ registered: string[]; failed: string[]; lockAccelerator: string | null }>>;
   };
   player: {
     onCommand(listener: (command: PlayerCommand) => void): () => void;
@@ -289,7 +295,7 @@ export type DesktopApi = {
     onAuxState(listener: (state: { kind: AuxWindowKind; open: boolean }) => void): () => void;
     showMain(): void;
     /** Lock (click-through) and opacity of the desktop lyric overlay; callable from either window. */
-    setLyricsAppearance(input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }): Promise<Result<LyricsAppearance>>;
+    setLyricsAppearance(input: { opacity?: number; locked?: boolean; fontSize?: number; color?: string; pendingColor?: string }): Promise<Result<LyricsAppearance>>;
     /** Lyrics window only: the applied appearance, so the toolbar never shows a stale state. */
     onLyricsAppearance(listener: (state: LyricsAppearance) => void): () => void;
   };
