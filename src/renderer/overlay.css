@@ -133,10 +133,8 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   overflow: hidden;
   -webkit-app-region: no-drag;
 }
-/* Only the bar drags: a fully draggable window eats every mouse event, which is why hovering the
-   lyric body never revealed the frame. The bar is 28 px tall and spans the width, so it still gives a
-   large target for moving the window. */
-.dlyric-bar { -webkit-app-region: drag; }
+/* Nothing here is a native drag region: a drag region swallows mouse events, so the hover frame never
+   appeared on the lyric body. Dragging is handled in JS (useWindowDrag) and covers the whole strip. */
 .dlyric-bar button, .dlyric-bar input { -webkit-app-region: no-drag; }
 .dlyric-grip {
   flex: none;

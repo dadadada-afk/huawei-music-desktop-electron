@@ -56,6 +56,12 @@ export const channels = {
   // the only way back once the overlay is click-through).
   windowLyricsAppearance: 'window:lyrics-appearance',
   windowShowMain: 'window:show-main',
+  // Dragging is done in JS rather than with -webkit-app-region: drag, because a drag region swallows
+  // mouse events and the overlay then never reacts to hover. Screen coordinates, not client ones:
+  // the window is moving while the pointer does.
+  auxDragStart: 'aux:drag-start',
+  auxDragMove: 'aux:drag-move',
+  auxDragEnd: 'aux:drag-end',
   // Main process -> lyrics window, so its toolbar never shows a stale lock/opacity state.
   lyricsAppearanceState: 'lyrics:appearance-state',
 } as const;

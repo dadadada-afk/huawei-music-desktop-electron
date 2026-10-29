@@ -25,6 +25,10 @@ export function registerIpc(
     /** Pins or unpins a helper window; returns the state that took effect. */
     onPinAux?: (kind: AuxWindowKind, pinned: boolean) => boolean;
     onShowMain?: () => void;
+    // Screen coordinates, because the window itself is moving while the pointer travels.
+    onAuxDragStart?: (sender: Electron.WebContents, point: { x: number; y: number }) => void;
+    onAuxDragMove?: (sender: Electron.WebContents, point: { x: number; y: number }) => void;
+    onAuxDragEnd?: (sender: Electron.WebContents) => void;
     /** Applies and persists the desktop lyric overlay appearance; returns the applied state. */
     onLyricsAppearance?: (patch: { opacity?: number; locked?: boolean; fontSize?: number; color?: string }) => LyricsAppearance | null;
     /** Auxiliary windows ask for the current snapshot once their listener is attached. */
@@ -354,6 +358,19 @@ export function registerIpc(
   ipcMain.on(channels.windowShowMain, event => {
     if (fromWindow(event) !== 'aux') return;
     hooks.onShowMain?.();
+  });
+  ipcMain.on(channels.auxDragStart, (event, input: { x?: number; y?: number } = {}) => {
+    const kind = fromWindow(event);
+    if (kind !== 'aux') return;
+    hooks.onAuxDragStart?.(event.sender, { x: Number(input?.x), y: Number(input?.y) });
+  });
+  ipcMain.on(channels.auxDragMove, (event, input: { x?: number; y?: number } = {}) => {
+    if (fromWindow(event) !== 'aux') return;
+    hooks.onAuxDragMove?.(event.sender, { x: Number(input?.x), y: Number(input?.y) });
+  });
+  ipcMain.on(channels.auxDragEnd, event => {
+    if (fromWindow(event) !== 'aux') return;
+    hooks.onAuxDragEnd?.(event.sender);
   });
 }
 

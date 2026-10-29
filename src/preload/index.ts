@@ -60,6 +60,10 @@ const api: DesktopApi = {
   window: {
     minimize: () => ipcRenderer.invoke(channels.windowMinimize),
     setCloseBehavior: input => ipcRenderer.invoke(channels.windowSetCloseBehavior, input),
+    // Screen coordinates: the helper window moves while the pointer travels, so client coords drift.
+    dragStart: (point: { x: number; y: number }) => ipcRenderer.send(channels.auxDragStart, point),
+    dragMove: (point: { x: number; y: number }) => ipcRenderer.send(channels.auxDragMove, point),
+    dragEnd: () => ipcRenderer.send(channels.auxDragEnd),
   },
   app: {
     quit: () => ipcRenderer.invoke(channels.appQuit),

@@ -7,6 +7,9 @@ import { AuthManager } from './auth-manager';
 import { createAuthManagerLifecycle } from './auth-manager-lifecycle.mjs';
 import { applyNodeProxy, electronBypassRules, proxyConfigurationProblem, proxyRules, readProxySettings } from './proxy.mjs';
 import { titleBarColors } from './titlebar.mjs';
+import { MINI_DEFAULT_SIZE, sanitizeAuxState } from './aux-state.mjs';
+
+type AuxState = { mini?: { x: number; y: number; width: number; height: number }; lyrics?: { x: number; y: number } };
 import { snapPosition } from './snap.mjs';
 import { shortcutStatus } from './shortcut-status.mjs';
 import { shouldBlockMediaRequest } from '../safe-media-url.mjs';
@@ -163,6 +166,9 @@ async function createWindow(): Promise<void> {
       onToggleAux: kind => toggleAuxWindow(kind),
       onPinAux: (kind, pinned) => pinAuxWindow(kind, pinned),
       onShowMain: showMainWindow,
+      onAuxDragStart: beginAuxDrag,
+      onAuxDragMove: moveAuxDrag,
+      onAuxDragEnd: endAuxDrag,
       onLyricsAppearance: patch => applyLyricsAppearance(patch),
       onRequestState: sender => { if (!sender.isDestroyed()) sender.send(channels.playerState, latestSnapshot); },
     });
@@ -183,6 +189,63 @@ async function createWindow(): Promise<void> {
   }
 }
 
+let auxState: AuxState = {};
+
+async function loadAuxState(): Promise<void> {
+  const stored = await loadJson(app.getPath('userData'), 'aux-state', null, fs).catch(() => null);
+  auxState = sanitizeAuxState(stored);
+}
+
+async function saveAuxState(): Promise<void> {
+  const next: AuxState = { ...auxState };
+  for (const [kind, window] of auxWindows) {
+    if (window.isDestroyed()) continue;
+    const [x, y] = window.getPosition();
+    if (kind === 'mini') {
+      const [width, height] = window.getSize();
+      next.mini = { x, y, width, height };
+    } else {
+      next.lyrics = { x, y };
+    }
+  }
+  auxState = next;
+  await saveJson(app.getPath('userData'), 'aux-state', next, fs).catch(() => undefined);
+}
+
+// JS-driven dragging. -webkit-app-region: drag would be smoother, but a drag region swallows the
+// mouse events the overlay needs for its hover frame, so the pointer is tracked here instead.
+interface DragSession { window: BrowserWindow; offsetX: number; offsetY: number }
+const dragSessions = new Map<number, DragSession>();
+
+function findAuxWindow(sender: Electron.WebContents): BrowserWindow | null {
+  for (const candidate of auxWindows.values()) {
+    if (!candidate.isDestroyed() && candidate.webContents.id === sender.id) return candidate;
+  }
+  return null;
+}
+
+function beginAuxDrag(sender: Electron.WebContents, point: { x: number; y: number }): void {
+  const window = findAuxWindow(sender);
+  if (!window || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+  const [windowX, windowY] = window.getPosition();
+  dragSessions.set(sender.id, { window, offsetX: point.x - windowX, offsetY: point.y - windowY });
+}
+
+function moveAuxDrag(sender: Electron.WebContents, point: { x: number; y: number }): void {
+  const session = dragSessions.get(sender.id);
+  if (!session || session.window.isDestroyed()) return;
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+  session.window.setPosition(Math.round(point.x - session.offsetX), Math.round(point.y - session.offsetY));
+}
+
+function endAuxDrag(sender: Electron.WebContents): void {
+  const session = dragSessions.get(sender.id);
+  dragSessions.delete(sender.id);
+  if (!session || session.window.isDestroyed()) return;
+  if (session.window === auxWindows.get('lyrics')) snapToDesktop(session.window);
+  void saveAuxState();
+}
+
 function sendPlayerCommand(command: PlayerCommand): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('player:command', command);
@@ -196,16 +259,21 @@ function lyricsWindowHeight(fontSize: number): number {
 }
 
 function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
+  const savedMini = kind === 'mini' ? auxState.mini : undefined;
+  const savedLyrics = kind === 'lyrics' ? auxState.lyrics : undefined;
   const window = new BrowserWindow({
-    width: kind === 'mini' ? 384 : 760,
-    height: kind === 'mini' ? 132 : lyricsWindowHeight(lyricsAppearance.fontSize),
-    minWidth: kind === 'mini' ? 360 : 320,
-    minHeight: kind === 'mini' ? 132 : 120,
+    width: savedMini?.width ?? (kind === 'mini' ? MINI_DEFAULT_SIZE.width : 760),
+    height: savedMini?.height ?? (kind === 'mini' ? MINI_DEFAULT_SIZE.height : lyricsWindowHeight(lyricsAppearance.fontSize)),
+    ...(savedMini ?? savedLyrics ? { x: (savedMini ?? savedLyrics)!.x, y: (savedMini ?? savedLyrics)!.y } : {}),
+    minWidth: kind === 'mini' ? 300 : 320,
+    minHeight: kind === 'mini' ? 96 : 120,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
-    resizable: kind === 'lyrics',
+    // Both helpers are resizable: the mini player so it can fit whatever the user wants to see, the
+    // overlay so a larger type size has room without clipping.
+    resizable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -442,6 +510,9 @@ app.whenReady().then(() => {
   }
   const proxy = readProxySettings();
   applyNodeProxy(proxy);
+  // Helper windows remember where they were put, and the mini player also remembers its size: an
+  // overlay the user has to re-dock on every launch is a chore, not a feature.
+  const auxStateReady = loadAuxState();
   const settingsReady = loadSettings().then(settings => {
     closeBehavior = settings.closeBehavior;
     activeTheme = settings.theme;
@@ -468,7 +539,7 @@ app.whenReady().then(() => {
     callback({ cancel: shouldBlockMediaRequest(details.resourceType, details.url) });
   });
   const rules = proxyRules(proxy);
-  void Promise.all([settingsReady,
+  void Promise.all([settingsReady, auxStateReady,
     rules ? session.defaultSession.setProxy({ mode: 'fixed_servers', proxyRules: rules, proxyBypassRules: electronBypassRules(proxy.bypass) }) : Promise.resolve(),
   ])
     .then(() => createWindow().catch(() => {

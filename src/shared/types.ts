@@ -235,7 +235,14 @@ export type DesktopApi = {
     load(): Promise<Result<SavedQueue | null>>;
     save(input: SavedQueue): Promise<Result<void>>;
   };
-  window: { minimize(): Promise<void>; setCloseBehavior(input: 'quit' | 'tray'): Promise<Result<AppSettings>> };
+  window: {
+    minimize(): Promise<void>;
+    setCloseBehavior(input: 'quit' | 'tray'): Promise<Result<AppSettings>>;
+    /** Screen coordinates, not client: the helper window moves while the pointer travels. */
+    dragStart(point: { x: number; y: number }): void;
+    dragMove(point: { x: number; y: number }): void;
+    dragEnd(): void;
+  };
   fonts: { list(): Promise<Result<{ families: string[] }>> };
   lyrics: {
     /** Opens a picker; resolves null when the user cancels. */

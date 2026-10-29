@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Lock, LockOpen, Minus, Plus, X } from 'lucide-react';
 import type { LyricsAppearance, PlayerSnapshot } from '../shared/types';
+import { useWindowDrag } from './useWindowDrag';
 
 // Three lines: the one just sung, the one being sung and the next one. The past line is what makes
 // "already sung" readable at a glance — with only current+next on screen the highlight had nothing
@@ -8,6 +9,8 @@ import type { LyricsAppearance, PlayerSnapshot } from '../shared/types';
 export function LyricsWindow() {
   const [state, setState] = useState<PlayerSnapshot | null>(null);
   const [look, setLook] = useState<LyricsAppearance>({ opacity: 1, locked: false, fontSize: 30, color: '#ffe9eb' });
+  // The whole strip drags. A locked overlay is click-through, so its mousedown never arrives anyway.
+  const onDragStart = useWindowDrag();
   // Subscribe first, then ask: the main process may have broadcast before this window finished
   // loading, so a pull is the only way to guarantee the first snapshot is not missed.
   useEffect(() => {
@@ -30,6 +33,7 @@ export function LyricsWindow() {
   };
   const resize = (delta: number) => apply({ fontSize: look.fontSize + delta });
   return <div className={`dlyric ${look.locked ? 'locked' : ''}`}
+    onMouseDown={onDragStart}
     style={{ '--dlyric-size': `${look.fontSize}px`, '--dlyric-color': look.color } as React.CSSProperties}>
     <div className="dlyric-bar">
       <span className="dlyric-grip" aria-hidden="true" />
