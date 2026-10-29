@@ -22,7 +22,7 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   gap: 8px;
   align-items: center;
   height: 100vh;
-  padding: 8px 9px;
+  padding: 6px 8px;
   box-sizing: border-box;
   background: rgba(28, 26, 26, 0.94);
   color: #f6f2ef;
@@ -54,14 +54,29 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 .mini-cover img { width: 100%; height: 100%; object-fit: cover; }
 
 .mini-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mini-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mini-artist { font-size: 11px; color: rgba(255, 255, 255, 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-title-row { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.mini-title {
+  font-size: 13px; font-weight: 600; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Never truncate the artist before the title: it is the shorter of the two and the one that answers
+   "what am I listening to" once the title is already recognisable. */
+.mini-artist {
+  font-size: 11px; color: rgba(255, 255, 255, 0.58); flex: 0 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .mini-lyric {
   font-size: 11px;
   /* Warm white against the dark plate, matching the overlay's "line being sung" colour so the two
-     windows read as the same thing. */
+     windows read as the same thing. Two clamped lines: the strip is wide, so a wrapped lyric shows
+     the whole phrase instead of a fragment. */
   color: var(--dlyric-color, #ffe9eb);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: hidden;
   min-height: 14px;
 }
 .mini-time { font-size: 10px; color: rgba(255, 255, 255, 0.45); font-variant-numeric: tabular-nums; }
@@ -116,9 +131,19 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   justify-content: center;
   gap: 4px;
   overflow: hidden;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
-.dlyric button { -webkit-app-region: no-drag; }
+/* Only the bar drags: a fully draggable window eats every mouse event, which is why hovering the
+   lyric body never revealed the frame. The bar is 28 px tall and spans the width, so it still gives a
+   large target for moving the window. */
+.dlyric-bar { -webkit-app-region: drag; }
+.dlyric-bar button, .dlyric-bar input { -webkit-app-region: no-drag; }
+.dlyric-grip {
+  flex: none;
+  width: 26px; height: 3px; margin-right: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+}
 
 .dlyric-bar {
   position: absolute;

@@ -7,6 +7,7 @@ import { AuthManager } from './auth-manager';
 import { createAuthManagerLifecycle } from './auth-manager-lifecycle.mjs';
 import { applyNodeProxy, electronBypassRules, proxyConfigurationProblem, proxyRules, readProxySettings } from './proxy.mjs';
 import { titleBarColors } from './titlebar.mjs';
+import { snapPosition } from './snap.mjs';
 import { shortcutStatus } from './shortcut-status.mjs';
 import { shouldBlockMediaRequest } from '../safe-media-url.mjs';
 import { loadSettings, updateSettings } from './storage';
@@ -188,17 +189,18 @@ function sendPlayerCommand(command: PlayerCommand): void {
 }
 
 // Three lyric lines plus the hover bar. Derived from the type size so a user who scales the overlay
-// up does not get the third line clipped by a fixed 168px frame.
+// up does not get the third line clipped, and kept tight at the low end: the previous 168 px floor
+// left an obvious band of empty scrim above and below the text.
 function lyricsWindowHeight(fontSize: number): number {
-  return Math.max(168, Math.round(fontSize * 2.7 + 70));
+  return Math.max(132, Math.round(fontSize * 2.2 + 48));
 }
 
 function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
   const window = new BrowserWindow({
     width: kind === 'mini' ? 384 : 760,
-    height: kind === 'mini' ? 148 : lyricsWindowHeight(lyricsAppearance.fontSize),
+    height: kind === 'mini' ? 132 : lyricsWindowHeight(lyricsAppearance.fontSize),
     minWidth: kind === 'mini' ? 360 : 320,
-    minHeight: kind === 'mini' ? 148 : 120,
+    minHeight: kind === 'mini' ? 132 : 120,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -219,6 +221,10 @@ function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
     window.setAlwaysOnTop(true, 'screen-saver');
     window.setOpacity(lyricsAppearance.opacity);
     window.setIgnoreMouseEvents(lyricsAppearance.locked, { forward: true });
+    // Snapping is what makes an overlay usable: a free-floating strip of text always ends up a few
+    // pixels off the edge it was aimed at. The user asked for bottom / bottom-centre docking, so the
+    // edges and the bottom centre are the only places this window will settle.
+    window.on('moved', () => snapToDesktop(window));
   }
   auxWindows.set(kind, window);
   window.once('closed', () => {
@@ -248,6 +254,18 @@ function pinAuxWindow(kind: AuxWindowKind, pinned: boolean): boolean {
   if (!target || target.isDestroyed()) return false;
   target.setAlwaysOnTop(pinned, 'floating');
   return target.isAlwaysOnTop();
+}
+
+// Pulls the overlay onto a screen edge once a drag ends inside the catch zone. Deliberately silent
+// when the pointer is nowhere near an edge: a window that repositions itself mid-drag is worse than
+// one that never snaps.
+function snapToDesktop(window: BrowserWindow): void {
+  if (window.isDestroyed()) return;
+  const [x, y] = window.getPosition();
+  const [width, height] = window.getSize();
+  const area = screen.getDisplayMatching({ x, y, width, height }).workArea;
+  const next = snapPosition({ x, y }, { width, height }, area);
+  if (next.x !== x || next.y !== y) window.setPosition(next.x, next.y);
 }
 
 function toggleAuxWindow(kind: AuxWindowKind): boolean {

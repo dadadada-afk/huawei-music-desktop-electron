@@ -32,6 +32,7 @@ export function LyricsWindow() {
   return <div className={`dlyric ${look.locked ? 'locked' : ''}`}
     style={{ '--dlyric-size': `${look.fontSize}px`, '--dlyric-color': look.color } as React.CSSProperties}>
     <div className="dlyric-bar">
+      <span className="dlyric-grip" aria-hidden="true" />
       <span className="dlyric-track">{state?.title || '桌面歌词'}</span>
       <button aria-label="缩小歌词字号" title="缩小字号" onClick={() => resize(-2)}><Minus size={13} /></button>
       <button aria-label="放大歌词字号" title="放大字号" onClick={() => resize(2)}><Plus size={13} /></button>

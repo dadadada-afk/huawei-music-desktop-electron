@@ -38,9 +38,13 @@ export function MiniPlayer() {
         : <Music2 size={18} />}
     </div>
     <div className="mini-body">
-      <div className="mini-title" title={state?.title ?? ''}>{state?.title || '还没有播放'}</div>
-      <div className="mini-artist" title={state?.artists ?? ''}>{state?.artists || '在华为音乐里选一首'}</div>
-      <div className="mini-lyric" title={activeLyric}>{activeLyric}</div>
+      {/* Title and artist share a line so the lyric below can use two: on a 132 px strip the
+          stacked metadata left only a single clipped lyric line. */}
+      <div className="mini-title-row">
+        <span className="mini-title" title={state?.title ?? ''}>{state?.title || '还没有播放'}</span>
+        <span className="mini-artist" title={state?.artists ?? ''}>{state?.artists || '在华为音乐里选一首'}</span>
+      </div>
+      <div className="mini-lyric" title={activeLyric}>{activeLyric || ' '}</div>
       <button
         className="mini-progress"
         aria-label="播放进度"
