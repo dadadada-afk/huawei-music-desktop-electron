@@ -60,7 +60,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   release:
-    name: Publish macOS preview
+    name: Publish macOS release
     needs: macos
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -87,11 +87,11 @@ jobs:
             cp "$dir"/*.dmg release-assets/
             cat "$dir/SHA256SUMS" >> release-assets/SHA256SUMS
           done
-      - name: Publish preview release
+      - name: Publish latest release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           gh release create "$RELEASE_TAG" release-assets/* \
-            --verify-tag --prerelease --title "听澜 Tinglan $RELEASE_TAG（macOS 测试版）" \
+            --verify-tag --latest --title "听澜 Tinglan $RELEASE_TAG（macOS 测试版）" \
             --notes-file docs/RELEASE_NOTES.md
