@@ -38,6 +38,28 @@ test('characters inside one timed segment advance one at a time', () => {
   assert.deepEqual(fills.map(value => Number(value.toFixed(2))), [1, 0.25, 0, 0, 0, 0]);
 });
 
+test('a long instrumental after a short line does not stretch the fill', () => {
+  // 10 characters, then 15 s of accompaniment before the next line: the row used to keep sweeping
+  // for the full 15 s and only finished as the next line arrived. It now completes with the voice.
+  const line = { text: '十个字的歌词在这一行' };
+  const start = 0;
+  const next = 15000;
+  const fills = lineFill(line, start, next, 9000);
+  assert.deepEqual(fills, Array(fills.length).fill(1));
+  // And it is still a sweep rather than a jump: a quarter of the way through the estimate, only the
+  // first few characters are done.
+  const early = lineFill(line, start, next, 2000);
+  assert.ok(early.some(value => value === 1) && early.some(value => value === 0));
+});
+
+test('a slow ballad keeps filling across its whole span', () => {
+  // Four characters over four seconds is a slow line, not a gap: cutting it at the estimate would
+  // finish the row while the singer is still on the second syllable.
+  const line = { text: '慢慢唱的歌' };
+  const fills = lineFill(line, 0, 4000, 3000);
+  assert.deepEqual(fills.map(value => Number(value.toFixed(2))), [1, 1, 1, 0.75, 0]);
+});
+
 test('an empty line produces no stops', () => {
   assert.deepEqual(lineFill({ text: '' }, 0, 1000, 500), []);
   assert.equal(fillGradient([], '#fff', '#888'), undefined);

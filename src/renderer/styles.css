@@ -330,8 +330,11 @@ select:focus-visible,
   position: fixed;
   top: 0;
   left: 0;
-  /* Stops short of the OS window buttons so their clicks are never swallowed by the drag region. */
-  right: 150px;
+  /* Electron publishes the caption-button well through env(titlebar-area-*), and that value is the
+     only one that stays exact across DPI scales and window-button counts. The old hardcoded
+     `right: 150px` missed the real 138px well by 12px, which left a strip of page background
+     showing between the drag bar and the small glyph — the seam users saw under the window buttons. */
+  width: env(titlebar-area-width, calc(100% - 138px));
   height: var(--titlebar-h);
   z-index: 55;
   -webkit-app-region: drag;

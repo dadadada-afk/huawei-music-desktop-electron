@@ -11,11 +11,33 @@ const clamp01 = value => Math.min(1, Math.max(0, value));
  * @param {number} positionMs current playback position
  * @returns {number[]} one 0..1 ratio per character, in text order
  */
+/**
+ * Slowest believable syllable when the file gives no word marks. This is deliberately far above the
+ * 250 ms a mid-tempo line actually averages: the estimate only decides whether a gap is long enough
+ * to be accompaniment rather than singing, and guessing low would cut a slow ballad off mid-line.
+ */
+const MS_PER_CHAR = 800;
+/** Shortest believable sung run, so a two-or-three character line is not over within 300 ms. */
+const MIN_SUNG_MS = 1200;
+/**
+ * A line is assumed to finish when the next one starts, which is wrong whenever the accompaniment
+ * runs long between two lines: the read then trails the voice and only catches up as the next line
+ * arrives. When the gap is clearly wider than the text can fill, the run is capped at that estimate
+ * instead, so the row completes with the voice and stays complete through the instrumental.
+ */
+const LONG_GAP_FACTOR = 1.3;
+
+function sungSpan(charCount, startMs, endMs) {
+  const span = endMs > startMs ? endMs - startMs : 0;
+  const estimate = Math.max(charCount * MS_PER_CHAR, MIN_SUNG_MS);
+  return span > estimate * LONG_GAP_FACTOR ? estimate : span;
+}
+
 export function lineFill(line, startMs, endMs, positionMs) {
   const text = line?.text ?? '';
   const chars = [...text];
   if (!chars.length) return [];
-  const span = endMs > startMs ? endMs - startMs : 0;
+  const span = sungSpan(chars.length, startMs, endMs);
   const segments = line?.segments;
   if (segments && segments.length) {
     const fills = [];
