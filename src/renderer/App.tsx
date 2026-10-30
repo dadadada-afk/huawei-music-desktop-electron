@@ -53,10 +53,11 @@ const LYRIC_OFFSET_LIMIT = 60;
 
 function readLyricOffset(trackId?: string): number {
   try {
+    // Per track and nothing else: an offset exists because that recording's lyric sheet came from a
+    // different master than the audio, so it says nothing about the next song. The old shared
+    // fallback leaked one correction into every track that had not been nudged yet.
     const own = Number(trackId ? localStorage.getItem(`${LYRIC_OFFSET_KEY}:${trackId}`) : null);
-    if (Number.isFinite(own) && own !== 0) return Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, own));
-    const shared = Number(localStorage.getItem(LYRIC_OFFSET_KEY));
-    return Number.isFinite(shared) ? Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, shared)) : 0;
+    return Number.isFinite(own) ? Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, own)) : 0;
   } catch { return 0; }
 }
 
@@ -632,9 +633,12 @@ export function App() {
     const next = Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, Math.round(moved * 10) / 10));
     setLyricOffset(next);
     try {
+      // Only the corrected track remembers the value. The shared key older builds wrote is dropped
+      // on the way out: it is ignored when reading, and leaving it behind only invites a future
+      // reader to start using it again.
       const trackId = currentTrack?.id;
       if (trackId) localStorage.setItem(`${LYRIC_OFFSET_KEY}:${trackId}`, String(next));
-      localStorage.setItem(LYRIC_OFFSET_KEY, String(next));
+      localStorage.removeItem(LYRIC_OFFSET_KEY);
     } catch { /* Preference storage is best effort. */ }
   }
 
