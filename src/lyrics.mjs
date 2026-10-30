@@ -97,3 +97,27 @@ export function activeLyricIndex(lines, positionMs) {
   }
   return index;
 }
+
+/** Below this difference the two recordings are close enough that any shift would be guesswork. */
+export const SUGGESTED_OFFSET_MIN_SECONDS = 6;
+/** Never suggest more than the stage itself can apply. */
+export const SUGGESTED_OFFSET_LIMIT_SECONDS = 60;
+
+/**
+ * How far a lyric sheet has to move to line up with this recording, in the same units and sign as
+ * the corrections the stage dials in (a positive value shows the lyric earlier).
+ *
+ * Only the difference in length is known. The audio being 17 s longer could mean a longer intro
+ * (shift everything earlier) or a longer outro (shift nothing at all), and the numbers cannot tell
+ * the two apart, so this is a suggestion the user accepts and can undo - never an automatic fix.
+ */
+export function suggestedLyricOffset(audioSeconds, lyricSeconds) {
+  const audio = Number(audioSeconds);
+  const lyric = Number(lyricSeconds);
+  // Both sides must look like real track lengths: a missing duration arrives as 0 or NaN, and a
+  // ringtone-length value means the metadata is not describing the recording that is playing.
+  if (!Number.isFinite(audio) || !Number.isFinite(lyric) || audio <= 30 || lyric <= 30) return null;
+  const delta = Math.round((audio - lyric) * 10) / 10;
+  if (Math.abs(delta) < SUGGESTED_OFFSET_MIN_SECONDS) return null;
+  return Math.max(-SUGGESTED_OFFSET_LIMIT_SECONDS, Math.min(SUGGESTED_OFFSET_LIMIT_SECONDS, delta));
+}

@@ -180,6 +180,7 @@ async function createWindow(): Promise<void> {
       // The overlay nudges the offset; the main window owns the value, its per-track memory and the
       // broadcast that keeps the stage and the overlay on the same line.
       onLyricOffset: delta => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channels.playerLyricOffset, delta); },
+      onLyricOffsetSet: value => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channels.playerLyricOffsetSet, value); },
       onToggleAux: kind => toggleAuxWindow(kind),
       onPinAux: (kind, pinned) => pinAuxWindow(kind, pinned),
       onShowMain: showMainWindow,

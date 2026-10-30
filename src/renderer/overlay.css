@@ -311,6 +311,15 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
 .dlyric-offset { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; opacity: 0.85; }
 .dlyric-offset em { font-style: normal; min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
 .dlyric-offset button { padding: 0 4px; }
+/* Sits beside the offset readout because that is what it changes; the tint marks it as an offer
+   rather than a control the listener has already exercised. */
+.dlyric-suggest {
+  font-size: 11px; padding: 1px 6px; margin-left: 4px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 0.9;
+}
+.dlyric-suggest:hover { opacity: 1; }
 
 /* Each line is remounted (React key) when the sung line changes, so one short animation gives the
    overlay the vertical "roll" a lyric list has, without a scrolling container to keep in sync. */

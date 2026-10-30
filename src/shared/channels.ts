@@ -55,6 +55,9 @@ export const channels = {
   // The overlay nudges the offset from where the lyric is actually read: same relay shape as a seek
   // (helper -> main -> main window, which owns the value and the per-track memory).
   playerLyricOffset: 'player:lyric-offset',
+  // Accepting a whole alignment suggestion: the same relay, but the value replaces the offset
+  // instead of nudging it, so a 17 s correction does not have to be walked in step by step.
+  playerLyricOffsetSet: 'player:lyric-offset-set',
   windowToggleAux: 'window:toggle-aux',
   windowPinAux: 'window:pin-aux',
   windowAuxState: 'window:aux-state',

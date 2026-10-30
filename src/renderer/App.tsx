@@ -11,7 +11,7 @@ import {
 } from './pages';
 import { FavoritesPage } from './favorites-page';
 import { APP_BRAND_LABEL } from '../shared/app-name.mjs';
-import { activeLyricIndex } from '../lyrics.mjs';
+import { activeLyricIndex, suggestedLyricOffset } from '../lyrics.mjs';
 import {
   autosaveDelay, buildShuffleOrder, historyReportDecision, onEndedAction, popPlayHistory, pushPlayHistory, stepCursor,
 } from './player.mjs';
@@ -624,13 +624,24 @@ export function App() {
   }
   function seekToLyric(timeMs: number) { seekAudio(timeMs / 1000 - lyricOffset); }
 
+  // Only a difference in length is known here; a longer outro looks exactly like a longer intro.
+  // The stage and the overlay therefore offer this as a suggestion the user accepts, never apply it.
+  const suggestedOffset = suggestedLyricOffset(duration, lyrics?.matchedDurationSeconds);
+
   // Offset is a per-track preference; the shared value seeds the next unheard track.
   function changeLyricOffset(delta: number) {
     // Half-second nudges for fine tuning, two-second strides once the correction is already large:
     // a lyric sheet twenty seconds out would otherwise take forty clicks to line up.
     const step = Math.abs(lyricOffset) >= 10 ? 2 : 0.5;
     const moved = lyricOffset + Math.sign(delta) * step;
-    const next = Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, Math.round(moved * 10) / 10));
+    applyLyricOffset(moved);
+  }
+
+  // Accepting a whole suggestion can be seventeen seconds off; walking there in steps is absurd, so
+  // this path replaces the value outright instead of stepping towards it.
+  function applyLyricOffset(value: number) {
+    if (!Number.isFinite(value)) return;
+    const next = Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, Math.round(value * 10) / 10));
     setLyricOffset(next);
     try {
       // Only the corrected track remembers the value. The shared key older builds wrote is dropped
@@ -919,6 +930,9 @@ export function App() {
   // correction lives here: one state, one per-track memory, one broadcast that keeps every window
   // showing the same row.
   useEffect(() => window.desktop.player.onLyricOffset(delta => changeLyricOffset(delta)), [lyricOffset]);
+  // The overlay carries no songbook of its own: it can ask the stage to accept a whole suggestion,
+  // and the stage applies and remembers it like any other correction.
+  useEffect(() => window.desktop.player.onLyricOffsetSet(value => applyLyricOffset(value)), [currentTrack?.id]);
 
   // The helper windows are pure mirrors: the main window is the only publisher, and it publishes on
   // every state change and time update, so the receivers never poll.
@@ -942,6 +956,9 @@ export function App() {
       })),
       lyricIndex: typeof active === 'number' ? active : -1,
       lyricOffset,
+      // The overlay compares this with `duration` to offer the alignment correction itself; the
+      // number is the length of the recording the sheet was written for, not of this audio.
+      ...(typeof lyrics?.matchedDurationSeconds === 'number' ? { lyricSheetSeconds: lyrics.matchedDurationSeconds } : {}),
       favorited: currentTrack ? favoriteOf(currentTrack.id) === true : false,
     });
   }, [currentTrack, playing, position, duration, lyrics, favoriteIds, lyricOffset]);
@@ -1161,6 +1178,8 @@ export function App() {
       onPrevious={goPrevious}
       onNext={goNext}
       onOffset={changeLyricOffset}
+      suggestedOffset={suggestedOffset}
+      onAcceptSuggestion={applyLyricOffset}
       onImport={() => void importLocalLyrics()}
       onRemoveLocal={() => void removeLocalLyrics()}
       onClose={() => setStageOpen(false)}

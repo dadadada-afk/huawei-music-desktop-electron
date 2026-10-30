@@ -50,7 +50,12 @@ async function fromKugou(query: LyricsQuery): Promise<LyricsDoc | null> {
   if (!text) return null;
   const doc = parseLyrics(text) as LyricsDoc;
   if (!doc.lines.length) return null;
-  return { ...doc, source: 'kugou', matchedTitle: match.title, matchedArtist: match.artists?.join(' / ') };
+  return {
+    ...doc, source: 'kugou', matchedTitle: match.title, matchedArtist: match.artists?.join(' / '),
+    // The index describes the recording the lyric sheet was written for, which is how a sheet from
+    // a shorter cut becomes visible instead of silently drifting.
+    ...(typeof picked.durationSeconds === 'number' && picked.durationSeconds > 0 ? { matchedDurationSeconds: picked.durationSeconds } : {}),
+  };
 }
 
 async function fromLrclib(query: LyricsQuery): Promise<LyricsDoc | null> {
@@ -61,7 +66,10 @@ async function fromLrclib(query: LyricsQuery): Promise<LyricsDoc | null> {
   if (!text) return null;
   const doc = parseLyrics(text) as LyricsDoc;
   if (!doc.lines.length) return null;
-  return { ...doc, source: 'lrclib', matchedTitle: match.title, matchedArtist: match.artists?.join(' / ') };
+  return {
+    ...doc, source: 'lrclib', matchedTitle: match.title, matchedArtist: match.artists?.join(' / '),
+    ...(typeof match.durationSeconds === 'number' && match.durationSeconds > 0 ? { matchedDurationSeconds: match.durationSeconds } : {}),
+  };
 }
 
 /** Tries each public lyric library in order; any failure falls through to the next one. */

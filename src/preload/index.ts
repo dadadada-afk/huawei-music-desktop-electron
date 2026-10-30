@@ -95,6 +95,12 @@ const api: DesktopApi = {
       ipcRenderer.on(channels.playerLyricOffset, wrapped);
       return () => ipcRenderer.removeListener(channels.playerLyricOffset, wrapped);
     },
+    setLyricOffset: value => ipcRenderer.send(channels.playerLyricOffsetSet, value),
+    onLyricOffsetSet: listener => {
+      const wrapped = (_event: Electron.IpcRendererEvent, value: number) => listener(value);
+      ipcRenderer.on(channels.playerLyricOffsetSet, wrapped);
+      return () => ipcRenderer.removeListener(channels.playerLyricOffsetSet, wrapped);
+    },
     toggleAux: kind => ipcRenderer.invoke(channels.windowToggleAux, { kind }),
     auxState: () => ipcRenderer.invoke(channels.windowAuxQuery),
     setAuxPinned: (kind, pinned) => ipcRenderer.invoke(channels.windowPinAux, { kind, pinned }),

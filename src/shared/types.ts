@@ -66,6 +66,13 @@ export type LyricsDoc = {
   source?: LyricsSource;
   matchedTitle?: string;
   matchedArtist?: string;
+  /**
+   * Length of the recording this lyric sheet was written for. When it differs from the track that
+   * is playing the sheet may come from another cut, and the difference is what the one-click
+   * alignment correction offers - a suggestion, because a longer outro looks exactly like a longer
+   * intro from the numbers alone.
+   */
+  matchedDurationSeconds?: number;
 };
 export type LyricsCacheInfo = { bytes: number; entries: number; localBytes: number; localEntries: number };
 export type AlbumDetail = {
@@ -206,6 +213,11 @@ export type PlayerSnapshot = {
    * without it they keep showing the uncorrected line while the stage shows the corrected one.
    */
   lyricOffset: number;
+  /**
+   * Length of the recording the lyric sheet was written for, when the library reported it. The
+   * overlay compares it with `duration` to offer the one-click alignment; absent means unknown.
+   */
+  lyricSheetSeconds?: number;
   /** Whether the current track is in the user's favourites, so the overlay's heart is honest. */
   favorited: boolean;
 };
@@ -313,6 +325,13 @@ export type DesktopApi = {
     adjustLyricOffset(delta: number): void;
     /** Main window only: an offset nudge forwarded from a helper window. */
     onLyricOffset(listener: (delta: number) => void): () => void;
+    /**
+     * Helper windows: accept a whole alignment suggestion. A replacement rather than a nudge, because
+     * a correction of seventeen seconds cannot be walked in with half second steps.
+     */
+    setLyricOffset(value: number): void;
+    /** Main window only: a replacement offset forwarded from a helper window. */
+    onLyricOffsetSet(listener: (value: number) => void): () => void;
     /** Opens or closes the given helper window; resolves to whether it is now open. */
     toggleAux(kind: AuxWindowKind): Promise<boolean>;
     /** Main window only: the helper windows can already be open from a previous session, so the

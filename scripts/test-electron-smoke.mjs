@@ -125,7 +125,8 @@ try {
   assert.deepEqual(boundary.windowKeys, ['dragEnd', 'dragMove', 'dragStart', 'minimize', 'setCloseBehavior']);
   assert.deepEqual(boundary.playerKeys, [
     'adjustLyricOffset', 'auxState', 'broadcast', 'control', 'onAppearance', 'onAuxState', 'onCommand', 'onLyricOffset',
-    'onLyricsAppearance', 'onSeek', 'onState', 'requestState', 'seek', 'setAuxPinned', 'setLyricsAppearance', 'showMain', 'toggleAux',
+    'onLyricOffsetSet', 'onLyricsAppearance', 'onSeek', 'onState', 'requestState', 'seek', 'setAuxPinned', 'setLyricOffset',
+    'setLyricsAppearance', 'showMain', 'toggleAux',
   ]);
   assert.equal(boundary.hasGenericInvoke, false, 'preload exposed a generic IPC entry point');
   assert.equal(boundary.nodeProcess, 'undefined');

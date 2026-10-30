@@ -3,6 +3,7 @@ import { Heart, Lock, LockOpen, Minus, Pause, Play, Plus, SkipBack, SkipForward,
 import type { LyricsAppearance, PlayerSnapshot } from '../shared/types';
 import { useWindowDrag } from './useWindowDrag';
 import { fillGradient, lineFill } from '../lyrics-progress.mjs';
+import { suggestedLyricOffset } from '../lyrics.mjs';
 import { applyAppearance, applyThemeAttribute, syncAppearanceFromSettings } from './appearance';
 
 // Three lines: the one just sung, the one being sung and the next one. The past line is what makes
@@ -59,6 +60,9 @@ export function LyricsWindow() {
   // so the overlay only sends the nudge and displays whatever value comes back.
   const offsetSeconds = state?.lyricOffset ?? 0;
   const nudge = (delta: number) => window.desktop.player.adjustLyricOffset(delta);
+  // The overlay never applies this by itself: a longer outro looks exactly like a longer intro, so
+  // the difference in length is only ever a suggestion the listener accepts.
+  const suggestedOffset = suggestedLyricOffset(state?.duration, state?.lyricSheetSeconds);
   const command = (value: 'play-pause' | 'next' | 'previous' | 'toggle-favorite') =>
     window.desktop.player.control(value);
   // data-align / data-transition drive the layout and the entrance animation from CSS, so switching
@@ -81,6 +85,17 @@ export function LyricsWindow() {
         <em>{(offsetSeconds > 0 ? '+' : '') + offsetSeconds.toFixed(1)}s</em>
         <button aria-label="歌词提前" onClick={() => nudge(0.5)}>+</button>
       </span>
+      {/* Offered, never applied: the sheet's length differs from this recording's, but only the user
+          can tell whether the extra seconds are an intro or an outro. Reading the overlay is where
+          the mismatch is noticed, so the offer has to be reachable from here too. */}
+      {typeof suggestedOffset === 'number' && Math.abs(suggestedOffset - offsetSeconds) > 0.5
+        ? <button
+          className="dlyric-suggest"
+          aria-label={`对齐歌词 ${suggestedOffset > 0 ? '+' : ''}${suggestedOffset.toFixed(1)}s`}
+          title="这份歌词来自另一个长度的录音，点这里整体对齐"
+          onClick={() => window.desktop.player.setLyricOffset(suggestedOffset)}
+        >对齐</button>
+        : null}
       <input className="dlyric-opacity" type="range" min="0.3" max="1" step="0.05"
         aria-label="桌面歌词透明度" title={`透明度 ${Math.round(look.opacity * 100)}%`}
         value={look.opacity}

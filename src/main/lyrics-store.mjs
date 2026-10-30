@@ -60,5 +60,10 @@ export function sanitizeLyricsDoc(value) {
   for (const key of ['source', 'matchedTitle', 'matchedArtist']) {
     if (typeof value[key] === 'string' && value[key]) doc[key] = String(value[key]).slice(0, 200);
   }
+  // A number rather than a string, and the overlay needs it to offer the alignment correction, so a
+  // cached sheet keeps the length of the recording it was written for.
+  if (typeof value.matchedDurationSeconds === 'number' && Number.isFinite(value.matchedDurationSeconds) && value.matchedDurationSeconds > 0) {
+    doc.matchedDurationSeconds = value.matchedDurationSeconds;
+  }
   return doc;
 }

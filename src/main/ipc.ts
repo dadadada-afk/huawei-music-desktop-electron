@@ -23,6 +23,8 @@ export function registerIpc(
     onSeek?: (seconds: number) => void;
     /** Forwards an offset nudge from a helper window to the main window, which owns the value. */
     onLyricOffset?: (delta: number) => void;
+    /** Forwards a whole replacement offset from a helper window (the alignment suggestion). */
+    onLyricOffsetSet?: (value: number) => void;
     onToggleAux?: (kind: AuxWindowKind) => boolean;
     onAuxQuery?: () => { mini: boolean; lyrics: boolean };
     /** Pins or unpins a helper window; returns the state that took effect. */
@@ -349,6 +351,12 @@ export function registerIpc(
     if (typeof input !== 'number' || !Number.isFinite(input) || Math.abs(input) > 5) return;
     hooks.onLyricOffset?.(input);
   });
+  ipcMain.on(channels.playerLyricOffsetSet, (event, input: unknown) => {
+    if (fromWindow(event) !== 'aux') return;
+    // A whole value, so the bound is the widest correction the stage itself can hold.
+    if (typeof input !== 'number' || !Number.isFinite(input) || Math.abs(input) > 60) return;
+    hooks.onLyricOffsetSet?.(input);
+  });
   ipcMain.handle(channels.windowToggleAux, async (event, input: { kind?: string } = {}) => {
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
     if (input?.kind !== 'mini' && input?.kind !== 'lyrics') throw new Error('辅助窗口类型无效');
@@ -447,6 +455,11 @@ function sanitizeSnapshot(input: unknown): PlayerSnapshot | null {
     lyrics,
     lyricIndex: lyricIndex >= -1 && lyricIndex < lyrics.length ? lyricIndex : -1,
     lyricOffset: offset(value.lyricOffset),
+    // Only a plausible track length is worth relaying: the overlay turns the difference against
+    // `duration` into an alignment suggestion, so a junk number must not become a suggestion.
+    ...(typeof value.lyricSheetSeconds === 'number' && Number.isFinite(value.lyricSheetSeconds) && value.lyricSheetSeconds > 30
+      ? { lyricSheetSeconds: Math.min(24 * 3600, value.lyricSheetSeconds) }
+      : {}),
     favorited: value.favorited === true,
   };
 }

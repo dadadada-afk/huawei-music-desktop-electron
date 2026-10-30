@@ -2,6 +2,16 @@
 
 更新时间：2026-10-30。当前在 **Windows 真实 Electron 环境**完成共享 API、业务逻辑、页面和播放器验证；不使用 Wine 作为运行/验收依赖。不对外发布。
 
+## 2026-10-30 歌词整体错位的自动建议（B 方案）
+
+- 现象与根因：第三方歌词库按「标题 + 艺人」挑版本，时长在 8–25 秒差之间既不扣分也不拒绝（`src/main/lyrics-provider.mjs` 的 `scoreCandidate`），于是《不惊》拿到了为 **178 秒**母带写的歌词，而本地音源是 **195 秒**——整首恒定偏晚 18 秒。收紧匹配不是解法：那首歌会直接没有歌词，比给一份能一键对齐的更差。
+- 能自动化的只有"差多少"，不是"差在哪"。歌词源返回的是**该录音的时长**（酷狗搜索 `Duration`、酷狗歌词索引 `duration/1000`、LRCLIB `duration`），本地音源也有自己的时长，两者之差就是整体平移量。但长度差分不出差异在开头还是结尾——只有开头差异才等于平移，尾奏/淡出的差异盲目平移会把本来对齐的歌词推错。所以本轮做成**建议式**：检测到差 ≥6 秒就提供一个按钮，用户点一下才生效，不静默改动。
+- `src/lyrics.mjs` 新增纯函数 `suggestedLyricOffset(audioSeconds, lyricSeconds)`：任一侧 ≤30 秒或非有限值返回 `null`，`Math.abs(delta) < SUGGESTED_OFFSET_MIN_SECONDS (6)` 返回 `null`，否则按 `SUGGESTED_OFFSET_LIMIT_SECONDS (60)` 夹取。值是 `audio − lyric`，与舞台偏移同号（正数 = 歌词该提前）。
+- 该录音的时长要能穿过缓存：`LyricsDoc` 新增 `matchedDurationSeconds`，`sanitizeLyricsDoc` 白名单同步放行（漏掉这一步，缓存读回就把字段丢了），`fromKugou` / `fromLrclib` 各自填上匹配到的录音长度。快照里叫 `lyricSheetSeconds`（主进程按 >30 秒且 ≤24 小时透传），桌面歌词拿它和 `duration` 比对。
+- 采纳必须走**绝对值**而不是增量：`+ / −` 在 |偏移| ≥10 秒后步长变 2 秒，十七秒落不了准点。新增 `player:lyric-offset-set` 通道（浮窗发意图 → 主进程校验来源是 aux 窗口且 |值| ≤60 → 主窗口 `applyLyricOffset`），`changeLyricOffset` 重构为算出目标值后调用同一个 `applyLyricOffset`，两条路径共用夹取与按曲写入。浮窗与舞台的按钮都只在「建议值与当前偏移差 >0.5 秒」时出现，采纳后自然消失。
+- 已知上限（不做）：时长差给出的是**恒定量**，如果两份录音速度不同（不同混音、变速版），对齐之后仍会前后漂，那种情况只能靠手工 `±` 分段矫正；曲库时长本身有 1–3 秒误差，误差会原样变成偏移误差，这也是阈值取 6 秒而不取 2 秒的原因之一。
+- 验证：`npm test` **214 通过 / 0 失败**（新增 3 项 `suggestedLyricOffset` 单测：195/178→17、178/195→−17、195/189→6、缺参与过短两侧→`null`、600/100→夹到 60）；`npm run build` 通过（`out/main/index.js` 162.47 kB、`out/preload/index.cjs` 11.17 kB）；Electron smoke 通过（`boundary.playerKeys` 由 17 项扩到 19 项）；新增真机端到端 `_tmp/verify-lyric-suggestion.mjs`（隔离 profile 启动真实应用 + 真实浮窗渲染进程），输出 `suggestion button: 对齐歌词 +17.0s` / `offset after accepting: 17` / `lyric suggestion check passed: offered, applied whole, then withdrawn` —— 覆盖「不同长度的歌词给出 17 秒建议」「点击后整段落位 17 而非逐步逼近」「已在生效值上不再提示」「差 5 秒（低于阈值）不提示」。
+
 ## 2026-10-30 歌词偏移对全部窗口生效
 
 - 歌词快慢的修正此前只作用于沉浸歌词舞台：主窗口广播的 `PlayerSnapshot` 里没有偏移字段，桌面歌词按未修正的 `position` 逐字填充、迷你播放器按未修正的 `lyricIndex` 取行，于是"在舞台调好了、浮窗还是差的"。现在快照新增 `lyricOffset`（秒），主进程白名单按 ±60s 夹取后原样透传（这一项带符号，不能用只接受非负的 `seconds()`）；桌面歌词用它计算填充位置，主进程计算 `lyricIndex` 时也先把偏移加进位置。

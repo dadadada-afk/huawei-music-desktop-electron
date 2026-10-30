@@ -525,7 +525,8 @@ function ShareCardButton({ track, doc, positionSeconds, offsetSeconds }: {
 
 export function LyricsStage({
   track, doc, loading, positionSeconds, offsetSeconds, playing, duration, disabled,
-  onSeekTo, onSeekSeconds, onToggle, onPrevious, onNext, onOffset, onImport, onRemoveLocal, onClose,
+  onSeekTo, onSeekSeconds, onToggle, onPrevious, onNext, onOffset, suggestedOffset, onAcceptSuggestion,
+  onImport, onRemoveLocal, onClose,
 }: LyricsViewProps & {
   track?: Track;
   onImport(): void;
@@ -538,6 +539,9 @@ export function LyricsStage({
   onPrevious(): void;
   onNext(): void;
   onOffset(deltaSeconds: number): void;
+  /** A whole correction the lyric sheet's own length suggests, or null when it cannot be told. */
+  suggestedOffset?: number | null;
+  onAcceptSuggestion?(seconds: number): void;
   onClose(): void;
 }) {
   const [following, setFollowing] = useState(true);
@@ -624,6 +628,16 @@ export function LyricsStage({
           <span className="offset">{(offsetSeconds > 0 ? '+' : '') + offsetSeconds.toFixed(1)}s</span>
           <button aria-label="歌词提前" onClick={() => onOffset(0.5)} disabled={!doc?.synced}>+</button>
         </div>
+        {/* Offered, not applied: the length difference cannot say whether the extra seconds sit in
+            the intro or the outro, so the user decides. Hidden once it is already in effect. */}
+        {typeof suggestedOffset === 'number' && Math.abs(suggestedOffset - offsetSeconds) > 0.5
+          ? <button
+            className="stage-tool stage-suggest"
+            aria-label={`对齐歌词 ${suggestedOffset > 0 ? '+' : ''}${suggestedOffset.toFixed(1)}s`}
+            title="这份歌词来自另一个长度的录音，点这里整体对齐"
+            onClick={() => onAcceptSuggestion?.(suggestedOffset)}
+          >对齐 {(suggestedOffset > 0 ? '+' : '')}{suggestedOffset.toFixed(1)}s</button>
+          : null}
         <ShareCardButton track={track} doc={doc} positionSeconds={positionSeconds} offsetSeconds={offsetSeconds} />
       </div>
     </footer>

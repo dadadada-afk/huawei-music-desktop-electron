@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLyrics, activeLyricIndex } from '../src/lyrics.mjs';
+import { parseLyrics, activeLyricIndex, suggestedLyricOffset } from '../src/lyrics.mjs';
 
 test('multi timestamp lines expand and sort by time', () => {
   const result = parseLyrics('[00:12.00]副歌\n[00:01.50]开场\n[00:05.00][00:20.00]重复');
@@ -72,6 +72,26 @@ test('metadata headers never become lyric lines', () => {
   const result = parseLyrics('[ti:歌名]\n[ar:歌手]\n[al:专辑]\n[by:某人]\n[00:01.00]正文');
   assert.deepEqual(result.lines, [{ timeMs: 1000, text: '正文' }]);
   assert.deepEqual(parseLyrics('[ti:只有元数据]'), { synced: false, lines: [] });
+});
+
+test('a lyric sheet from a shorter recording is reported as a shift the user can accept', () => {
+  // The real case: the audio is 195 s, the lyric sheet belongs to the 178 s version.
+  assert.equal(suggestedLyricOffset(195, 178), 17);
+  assert.equal(suggestedLyricOffset(178, 195), -17);
+});
+
+test('small differences and unusable durations never produce a suggestion', () => {
+  assert.equal(suggestedLyricOffset(195, 190), null, 'a five second difference is guesswork');
+  assert.equal(suggestedLyricOffset(195, 189), 6, 'the threshold itself is accepted');
+  assert.equal(suggestedLyricOffset(195, undefined), null);
+  assert.equal(suggestedLyricOffset(undefined, 178), null);
+  assert.equal(suggestedLyricOffset(195, 0), null);
+  assert.equal(suggestedLyricOffset(20, 12), null, 'ringtone-length metadata is not a recording');
+});
+
+test('a suggestion is clamped to what the stage can apply', () => {
+  assert.equal(suggestedLyricOffset(600, 100), 60);
+  assert.equal(suggestedLyricOffset(100, 600), -60);
 });
 
 test('word marks survive on plain text lyrics as well', () => {
