@@ -22,6 +22,7 @@ export function registerIpc(
     onCommand?: (command: PlayerCommand) => void;
     onSeek?: (seconds: number) => void;
     onToggleAux?: (kind: AuxWindowKind) => boolean;
+    onAuxQuery?: () => { mini: boolean; lyrics: boolean };
     /** Pins or unpins a helper window; returns the state that took effect. */
     onPinAux?: (kind: AuxWindowKind, pinned: boolean) => boolean;
     onShowMain?: () => void;
@@ -343,6 +344,10 @@ export function registerIpc(
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
     if (input?.kind !== 'mini' && input?.kind !== 'lyrics') throw new Error('辅助窗口类型无效');
     return hooks.onToggleAux?.(input.kind) ?? false;
+  });
+  ipcMain.handle(channels.windowAuxQuery, async event => {
+    if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
+    return hooks.onAuxQuery?.() ?? { mini: false, lyrics: false };
   });
   ipcMain.handle(channels.windowPinAux, async (event, input: { kind?: string; pinned?: boolean } = {}) => {
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');

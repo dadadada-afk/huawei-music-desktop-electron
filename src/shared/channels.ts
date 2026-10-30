@@ -55,6 +55,9 @@ export const channels = {
   windowToggleAux: 'window:toggle-aux',
   windowPinAux: 'window:pin-aux',
   windowAuxState: 'window:aux-state',
+  // The main window asks for the current helper-window state once on mount: the push above can be
+  // missed when the overlay was reopened from the previous session before the renderer subscribed.
+  windowAuxQuery: 'window:aux-query',
   // Both windows may change the overlay look: the lyrics window itself and the main window (which is
   // the only way back once the overlay is click-through).
   windowLyricsAppearance: 'window:lyrics-appearance',

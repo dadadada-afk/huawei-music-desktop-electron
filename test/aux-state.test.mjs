@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MINI_DEFAULT_SIZE, sanitizeAuxState } from '../src/main/aux-state.mjs';
+import { LYRICS_MIN_SIZE, MINI_DEFAULT_SIZE, sanitizeAuxState } from '../src/main/aux-state.mjs';
 
 test('drops anything that is not a finite coordinate pair', () => {
   assert.deepEqual(sanitizeAuxState(null), {});
@@ -32,4 +32,20 @@ test('fills a missing mini size from the default rather than dropping the positi
 test('ignores unknown keys instead of carrying them forward', () => {
   const cleaned = sanitizeAuxState({ mini: { x: 1, y: 2, width: 384, height: 96 }, extra: { x: 1, y: 1 } });
   assert.deepEqual(Object.keys(cleaned), ['mini']);
+});
+
+test('remembers the lyrics overlay size, clamped into the resizable range', () => {
+  const kept = sanitizeAuxState({ lyrics: { x: 10, y: 20, width: 900.4, height: 400.6 } });
+  assert.deepEqual(kept.lyrics, { x: 10, y: 20, width: 900, height: 401 });
+  const tiny = sanitizeAuxState({ lyrics: { x: 10, y: 20, width: 12, height: 12 } });
+  assert.equal(tiny.lyrics.width, LYRICS_MIN_SIZE.width);
+  assert.equal(tiny.lyrics.height, LYRICS_MIN_SIZE.height);
+  const huge = sanitizeAuxState({ lyrics: { x: 10, y: 20, width: 99999, height: 99999 } });
+  assert.deepEqual(huge.lyrics, { x: 10, y: 20, width: 3000, height: 1200 });
+});
+
+test('remembers the overlay switch only as a real boolean', () => {
+  assert.equal(sanitizeAuxState({ lyricsOpen: true }).lyricsOpen, true);
+  assert.equal(sanitizeAuxState({ lyricsOpen: false }).lyricsOpen, false);
+  assert.deepEqual(sanitizeAuxState({ lyricsOpen: 'yes' }), {});
 });

@@ -1,8 +1,9 @@
 // Pure settings/queue sanitation so persisted JSON can never widen the IPC contract.
 /** @type {import('../shared/types').AppSettings} */
 export const DEFAULT_SETTINGS = Object.freeze({
-  // A music player is expected to keep playing when the window is closed or minimized, which is
-  // how every mainstream desktop player behaves; quitting is still one setting away.
+  // A music player is expected to keep playing when the window is closed, which is how every
+  // mainstream desktop player behaves; minimizing stays a plain minimize, and quitting is one
+  // setting away.
   closeBehavior: 'tray',
   quality: 'standard',
   volume: 0.85,

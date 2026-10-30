@@ -7,9 +7,14 @@ import { AuthManager } from './auth-manager';
 import { createAuthManagerLifecycle } from './auth-manager-lifecycle.mjs';
 import { applyNodeProxy, electronBypassRules, proxyConfigurationProblem, proxyRules, readProxySettings } from './proxy.mjs';
 import { nativeThemeSource, titleBarColors } from './titlebar.mjs';
-import { MINI_DEFAULT_SIZE, sanitizeAuxState } from './aux-state.mjs';
+import { LYRICS_DEFAULT_WIDTH, LYRICS_MIN_SIZE, MINI_DEFAULT_SIZE, MINI_MIN_SIZE, sanitizeAuxState } from './aux-state.mjs';
 
-type AuxState = { mini?: { x: number; y: number; width: number; height: number }; lyrics?: { x: number; y: number } };
+type AuxState = {
+  mini?: { x: number; y: number; width: number; height: number };
+  lyrics?: { x: number; y: number; width?: number; height?: number };
+  /** Whether the desktop lyric overlay was open when the app last exited. */
+  lyricsOpen?: boolean;
+};
 import { snapPosition } from './snap.mjs';
 import { shortcutStatus } from './shortcut-status.mjs';
 import { shouldBlockMediaRequest } from '../safe-media-url.mjs';
@@ -18,14 +23,22 @@ import { loadJson, saveJson } from './json-store.cjs';
 import { sanitizeWindowState } from './window-state.mjs';
 import { TRAY_ICON_PNG_BASE64 } from './icons';
 import { APP_DISPLAY_NAME } from '../shared/app-name.mjs';
+import { APP_USER_MODEL_ID, APP_USER_MODEL_ID_DEV } from '../shared/app-id.mjs';
 import { existsSync } from 'node:fs';
 import { channels } from '../shared/channels';
 import type { AppSettings, AuxWindowKind, LyricsAppearance, PlayerCommand, PlayerSnapshot } from '../shared/types';
 
-// out/main/index.js resolves to out/icon.png, which the build step copies from build/icon.png. A
-// missing file is tolerated so a source checkout without the copy still opens a window.
-const APP_ICON_PATH = [join(__dirname, '../icon.png'), join(__dirname, '../../build/icon.png')]
-  .find(candidate => existsSync(candidate));
+// out/main/index.js resolves to out/icon.ico, which the build step copies from build/headphones.ico.
+// Windows only paints the taskbar glyph from an ICO; with a PNG window icon the small icon stays
+// empty and the taskbar falls back to the Electron default atom. A missing file is tolerated so a
+// source checkout without the copy still opens a window.
+const ICON_CANDIDATES = [
+  join(__dirname, '../icon.ico'),
+  join(__dirname, '../../build/headphones.ico'),
+  join(__dirname, '../icon.png'),
+  join(__dirname, '../../build/icon.png'),
+];
+const APP_ICON_PATH = ICON_CANDIDATES.find(candidate => existsSync(candidate));
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -74,9 +87,14 @@ const authManagerLifecycle = createAuthManagerLifecycle(async () => {
 // happen before the single-instance lock, which is keyed on the userData directory.
 app.setName('huawei-music-desktop');
 // Windows attributes toasts to the AppUserModelID, not the executable name; without it a
-// notification either never appears or is labelled "electron.app.Electron". Same value the
-// packaged shortcut uses, so the tray, taskbar and notifications all agree on one identity.
-if (process.platform === 'win32') app.setAppUserModelId('com.huawei.music.desktop.study');
+// notification either never appears or is labelled "electron.app.Electron". The id matches
+// package.json "build.appId", which electron-builder stamps on the installed shortcut, so the
+// shortcut, taskbar and notifications agree on one identity. The shell caches the icon it first
+// saw under an id, so development uses its own: a single run through electron.exe would otherwise
+// pin Electron's stock icon to the packaged identity for good.
+if (process.platform === 'win32') {
+  app.setAppUserModelId(app.isPackaged ? APP_USER_MODEL_ID : APP_USER_MODEL_ID_DEV);
+}
 
 const hasSingleInstance = app.requestSingleInstanceLock();
 if (!hasSingleInstance) app.quit();
@@ -95,8 +113,8 @@ async function createWindow(): Promise<void> {
     width: bounds?.width ?? 1180, height: bounds?.height ?? 760, minWidth: 960, minHeight: 640,
     ...(bounds?.x !== undefined && bounds?.y !== undefined ? { x: bounds.x, y: bounds.y } : {}),
     title: APP_DISPLAY_NAME,
-    // The packaged executable still carries Electron's stock icon, so the window and taskbar take
-    // theirs from the file next to the bundle instead of from the .exe resources.
+    // The window and taskbar take their icon from the file next to the bundle; the packaged .exe
+    // carries the same icon, so the two cannot disagree.
     ...(APP_ICON_PATH ? { icon: APP_ICON_PATH } : {}),
     // No native title bar: the window title carried the whole "第三方客户端（学习版）" string, which
     // is disclaimer text, not an app name worth painting across the top. The OS keeps drawing the
@@ -115,19 +133,15 @@ async function createWindow(): Promise<void> {
   mainWindow = window;
   if (bounds?.maximized) window.maximize();
   window.once('closed', () => { if (mainWindow === window) mainWindow = null; });
-  // The saved close policy controls both title-bar actions; the default is tray for desktop use.
+  // The saved close policy applies to the close button only; the default is tray for desktop use.
   window.on('close', event => {
     if (quitting || closeBehavior !== 'tray' || !tray) return;
     event.preventDefault();
     window.hide();
   });
-  // The same opt-in covers the minimize button: one switch, both window controls, so a tray user
-  // never gets a hidden window on one path and a taskbar entry on the other. Electron does not let
-  // a listener cancel 'minimize', so the window is hidden right after it minimizes.
-  window.on('minimize', () => {
-    if (closeBehavior !== 'tray' || !tray) return;
-    window.hide();
-  });
+  // Minimizing is deliberately not intercepted. Windows minimizes every window for the taskbar's
+  // "show desktop" button, so hiding here made the app vanish into the tray from two different
+  // controls and left the taskbar entry gone. A minimized window now stays on the taskbar.
   // Geometry is written at most once per settle instead of on every resize tick; the maximized flag
   // is recorded separately so restoring a maximized window does not overwrite its normal size.
   let boundsTimer: NodeJS.Timeout | null = null;
@@ -178,6 +192,7 @@ async function createWindow(): Promise<void> {
         }
       },
       onRequestState: sender => { if (!sender.isDestroyed()) sender.send(channels.playerState, latestSnapshot); },
+      onAuxQuery: () => auxOpenState(),
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -208,15 +223,31 @@ async function saveAuxState(): Promise<void> {
   for (const [kind, window] of auxWindows) {
     if (window.isDestroyed()) continue;
     const [x, y] = window.getPosition();
-    if (kind === 'mini') {
-      const [width, height] = window.getSize();
-      next.mini = { x, y, width, height };
-    } else {
-      next.lyrics = { x, y };
-    }
+    const [width, height] = window.getSize();
+    if (kind === 'mini') next.mini = { x, y, width, height };
+    else next.lyrics = { x, y, width, height };
   }
   auxState = next;
   await saveJson(app.getPath('userData'), 'aux-state', next, fs).catch(() => undefined);
+}
+
+// Resizing fires once per frame while the pointer drags an edge, so the write is debounced; closing
+// the window flushes it, otherwise a resize made in the last few hundred ms is lost on exit.
+let auxSaveTimer: NodeJS.Timeout | null = null;
+
+function scheduleAuxStateSave(): void {
+  if (auxSaveTimer) clearTimeout(auxSaveTimer);
+  auxSaveTimer = setTimeout(() => { auxSaveTimer = null; void saveAuxState(); }, 400);
+}
+
+function flushAuxStateSave(): void {
+  if (auxSaveTimer) { clearTimeout(auxSaveTimer); auxSaveTimer = null; }
+  void saveAuxState();
+}
+
+function isAuxOpen(kind: AuxWindowKind): boolean {
+  const window = auxWindows.get(kind);
+  return window !== undefined && !window.isDestroyed();
 }
 
 // JS-driven dragging. -webkit-app-region: drag would be smoother, but a drag region swallows the
@@ -250,7 +281,7 @@ function endAuxDrag(sender: Electron.WebContents): void {
   dragSessions.delete(sender.id);
   if (!session || session.window.isDestroyed()) return;
   if (session.window === auxWindows.get('lyrics')) snapToDesktop(session.window);
-  void saveAuxState();
+  flushAuxStateSave();
 }
 
 function sendPlayerCommand(command: PlayerCommand): void {
@@ -268,12 +299,16 @@ function lyricsWindowHeight(fontSize: number): number {
 function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
   const savedMini = kind === 'mini' ? auxState.mini : undefined;
   const savedLyrics = kind === 'lyrics' ? auxState.lyrics : undefined;
+  const saved = savedMini ?? savedLyrics;
   const window = new BrowserWindow({
-    width: savedMini?.width ?? (kind === 'mini' ? MINI_DEFAULT_SIZE.width : 760),
-    height: savedMini?.height ?? (kind === 'mini' ? MINI_DEFAULT_SIZE.height : lyricsWindowHeight(lyricsAppearance.fontSize)),
-    ...(savedMini ?? savedLyrics ? { x: (savedMini ?? savedLyrics)!.x, y: (savedMini ?? savedLyrics)!.y } : {}),
-    minWidth: kind === 'mini' ? 300 : 320,
-    minHeight: kind === 'mini' ? 96 : 120,
+    // Both helpers come back the size the user left them in: a stretched overlay that snaps back to
+    // its old height on the next launch is the reset that was reported. The overlay height only
+    // follows the type size until someone resizes the frame.
+    width: savedMini?.width ?? savedLyrics?.width ?? (kind === 'mini' ? MINI_DEFAULT_SIZE.width : LYRICS_DEFAULT_WIDTH),
+    height: savedMini?.height ?? savedLyrics?.height ?? (kind === 'mini' ? MINI_DEFAULT_SIZE.height : lyricsWindowHeight(lyricsAppearance.fontSize)),
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
+    minWidth: kind === 'mini' ? MINI_MIN_SIZE.width : LYRICS_MIN_SIZE.width,
+    minHeight: kind === 'mini' ? MINI_MIN_SIZE.height : LYRICS_MIN_SIZE.height,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -302,6 +337,10 @@ function createAuxWindow(kind: AuxWindowKind): BrowserWindow {
     window.on('moved', () => snapToDesktop(window));
   }
   auxWindows.set(kind, window);
+  // Resizing is remembered as well as moving; the timer is debounced inside the scheduler.
+  window.on('resize', scheduleAuxStateSave);
+  // Last chance to persist the geometry while the window still has one.
+  window.on('close', flushAuxStateSave);
   window.once('closed', () => {
     if (auxWindows.get(kind) !== window) return;
     auxWindows.delete(kind);
@@ -344,11 +383,24 @@ function snapToDesktop(window: BrowserWindow): void {
 }
 
 function toggleAuxWindow(kind: AuxWindowKind): boolean {
-  const existing = auxWindows.get(kind);
-  if (existing && !existing.isDestroyed()) { existing.close(); return false; }
-  createAuxWindow(kind);
-  notifyAuxState(kind, true);
-  return true;
+  const open = !isAuxOpen(kind);
+  if (open) createAuxWindow(kind);
+  else auxWindows.get(kind)!.close();
+  // Only the overlay's switch is a preference that outlives the session. The mini player is a glance
+  // at what is playing, so it is deliberately not restored on the next launch.
+  if (kind === 'lyrics') {
+    auxState.lyricsOpen = open;
+    void saveAuxState();
+  }
+  if (open) notifyAuxState(kind, true);
+  return open;
+}
+
+// The main window asks once on mount rather than waiting for a push. The overlay may already be open
+// because it was on when the app last closed, and the push that opened it can beat the renderer's
+// subscription. `lyricsOpen` covers the moment between "restore decided" and "window created".
+function auxOpenState(): { mini: boolean; lyrics: boolean } {
+  return { mini: isAuxOpen('mini'), lyrics: isAuxOpen('lyrics') || auxState.lyricsOpen === true };
 }
 
 // Desktop lyric overlay appearance. `locked` turns the window click-through so it never swallows a
@@ -574,9 +626,14 @@ app.whenReady().then(() => {
   void Promise.all([settingsReady, auxStateReady,
     rules ? session.defaultSession.setProxy({ mode: 'fixed_servers', proxyRules: rules, proxyBypassRules: electronBypassRules(proxy.bypass) }) : Promise.resolve(),
   ])
-    .then(() => createWindow().catch(() => {
-      failStartup('应用启动失败', '无法初始化应用窗口。请检查本机应用数据目录权限后重启。');
-    }))
+    .then(async () => {
+      await createWindow().catch(() => {
+        failStartup('应用启动失败', '无法初始化应用窗口。请检查本机应用数据目录权限后重启。');
+      });
+      // Reopened only once the main window exists: the overlay is an accessory, never the app itself,
+      // and the main window owns playback.
+      if (auxState.lyricsOpen && mainWindow && !mainWindow.isDestroyed()) toggleAuxWindow('lyrics');
+    })
     .catch(() => failStartup('代理配置失败', '无法应用当前 HTTP(S) 代理配置。为避免绕过代理，本次不会直连网络。请检查代理设置后重启。'));
   app.on('activate', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {

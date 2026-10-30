@@ -152,27 +152,35 @@ try {
   assert.ok(outerBytes.includes(Buffer.from('Nullsoft')) || outerBytes.includes(Buffer.from('NSIS Error')),
     'installer wrapper is not a Nullsoft (NSIS) package');
   assert.equal(appPe.machine, 0x8664, 'application is not Windows x64');
-  // The icon must be our own artwork: a brand-green rounded square with a light glyph.
-  // <out>/win-unpacked/resources/app.asar -> <out>/.icon-ico/icon.ico (written by electron-builder).
-  const ico = readIcoEntries(await readFile(join(unpackedArchive, '..', '..', '..', '.icon-ico', 'icon.ico')));
+  // The icon must be our own artwork: the brand red rounded square with a light glyph.
+  // electron-builder 26 leaves no intermediate .icon-ico directory beside the output (the older
+  // Linux toolchain did), so read the file build.win.icon points at and require its 256px frame to
+  // appear verbatim inside the packaged executable.
+  const projectRoot = dirname(dirname(dirname(artifact)));
+  const project = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
+  const configuredIcon = project.build?.win?.icon;
+  assert.ok(configuredIcon, 'build.win.icon is not configured');
+  const ico = readIcoEntries(await readFile(join(projectRoot, ...configuredIcon.split('/'))));
   assert.ok(ico.length >= 6, `expected a full icon size set, got ${ico.length}`);
   const largest = ico.filter(entry => entry.png).sort((a, b) => b.width - a.width)[0];
   assert.ok(largest && largest.width >= 256, 'icon is missing a 256px PNG entry');
+  assert.ok(appBytes.includes(largest.data), 'packaged executable does not embed the configured icon artwork');
   const art = decodePng(largest.data);
   const pixel = (x, y) => {
     const at = (y * art.width + x) * art.channels;
     return [...art.pixels.subarray(at, at + 3), art.channels === 4 ? art.pixels[at + 3] : 255];
   };
   const near = (value, target, tolerance = 26) => value.every((channel, index) => Math.abs(channel - target[index]) <= tolerance);
-  // Rounded corners are transparent, so judge the artwork by coverage: a mostly brand-green
-  // field with a light glyph on top. The stock Electron icon fails both ratios.
+  // Rounded corners are transparent, so judge the artwork by coverage: a mostly red field with a
+  // light glyph on top. The gradient runs #e84854 -> #960c1a, so the midpoint is the target and the
+  // tolerance has to span both ends of it. The stock Electron icon fails both ratios.
   let brand = 0, light = 0, sampled = 0;
   for (let y = 0; y < art.height; y += 2) for (let x = 0; x < art.width; x += 2) {
     const [r, g, b, a] = pixel(x, y);
     if (a < 8) continue;
     sampled++;
-    if (near([r, g, b], [27, 64, 55])) brand++;
-    if (near([r, g, b], [242, 251, 240], 60)) light++;
+    if (near([r, g, b], [191, 42, 55], 60)) brand++;
+    if (near([r, g, b], [255, 255, 255], 40)) light++;
   }
   const brandRatio = brand / sampled;
   const lightRatio = light / sampled;

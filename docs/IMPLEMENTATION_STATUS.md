@@ -1,6 +1,22 @@
 # 实现进度
 
-更新时间：2026-10-28。当前在 **Windows 真实 Electron 环境**完成共享 API、业务逻辑、页面和播放器验证；不使用 Wine 作为运行/验收依赖。不对外发布。
+更新时间：2026-10-30。当前在 **Windows 真实 Electron 环境**完成共享 API、业务逻辑、页面和播放器验证；不使用 Wine 作为运行/验收依赖。不对外发布。
+
+## 2026-10-30 桌面歌词记忆与安装器桌面快捷方式
+
+- 桌面歌词的开关现在持久化：打开过一次后，下次启动会自动把歌词窗口开回来；用户关掉也记成关闭，重启保持关闭。判定只认歌词（迷你播放器不算偏好），写入 `aux-state.json` 的 `lyricsOpen`。
+- 新增 `window:aux-query` 查询通道（渲染层 `player.auxState()`）：主窗口启动时主动问一次辅助窗口状态，避免"主进程已经自动开窗、界面按钮却还显示未开"的竞态。
+- 桌面歌词的位置**和大小**都记忆。此前 `aux-state.mjs` 对歌词只保留 `{x,y}`、窗口宽高每次重建（宽固定 760、高按字号推算），所以拉伸后重开必然还原；现在存 `{x,y,width,height}` 并 clamp 到 320×120 下限、3000×1200 上限，窗口 `resize` 事件 400ms 防抖落盘、`close` 前立即 flush。迷你播放器拉伸后不记忆是同根因缺陷，一并修好。
+- 安装器现在创建桌面快捷方式（`build.nsis.createDesktopShortcut` 由 `false` 改为 `true`）；此前只有开始菜单入口，用户装完在桌面找不到图标。
+- 验证：211 项离线单测全绿（含新增 2 项 `sanitizeAuxState` 回归）；`npm run build` 通过；Electron smoke 与 UI 两套套件均通过——UI 套件顺带修好上一批改动遗留的过期断言（设置页行为下拉的 aria-label 已改为「关闭窗口时行为」，脚本仍在找旧名字）；真机端到端（隔离 profile 启动真实应用与真实渲染进程，脚本 `_tmp/verify-aux-memory.mjs`，给 `AUX_VERIFY_APP` 传安装版 exe 即可切到打包形态）验证「开歌词 → 拖到 884×372 @(160,300) → 重启 → 窗口原地原尺寸回来 → 关闭 → 再重启 → 不再出现」，持久化文件同步为 `lyricsOpen: false`；同一脚本对安装版（打包 exe）重跑同样通过。
+
+## 2026-10-30 任务栏图标与最小化行为修复
+
+- 任务栏按钮长期显示 Electron 默认图标，而窗口图标、`华为音乐.exe` 资源图标、桌面快捷方式图标都已是耳机图标。根因是 shell 按 **AppUserModelID 字符串**缓存它第一次见到的那个图标：开发期用 `electron.exe` 跑过同一个 AUMID `com.huawei.music.desktop.study`，该 id 从此固定为 Electron 图标；清 iconcache、重启 explorer、删 `HKCU\Software\Classes\AppUserModelId\<id>` 注册项都无效，只有换 id 才生效。现在 AUMID 取 `package.json` 的 `build.appId`（`org.hwmusicdesktop.unofficial.internal`，与安装器给快捷方式盖的 id 一致），开发模式用 `.dev` 后缀，避免开发运行再次污染打包身份。常量为 `src/shared/app-id.mjs`，`test/app-id.test.mjs` 断言它与 `build.appId` 相等。
+- 最小化不再被拦截：删除 `src/main/index.ts` 中 `window.on('minimize')` 里的 `window.hide()`。Windows 的「显示桌面」会最小化所有窗口，原逻辑让应用从「最小化按钮」和「显示桌面」两条路径都消失进托盘且任务栏按钮一并消失；现在最小化就是普通最小化，只有关闭窗口仍按 `closeBehavior` 收进托盘。设置页文案随之改为「关闭窗口时」。
+- 验证：209 项离线单测全绿；`npm run build` 通过；release 产物实测「最小化」与「显示桌面」后窗口仍 `IsWindowVisible`（留在任务栏），任务栏按钮为耳机图标。
+- Windows NSIS 安装包首次在本机真实 Windows 上产出（`npm run dist:win` → `release/win-x64/huawei-music-desktop-0.0.1-win-x64-setup-internal.exe`，111 MB，未签名），并完成实机验收：静默安装到自定义目录成功（`perMachine: false`，用户级安装、不需要管理员）；装完启动的任务栏按钮即耳机图标；**删掉手工写的 `HKCU\Software\Classes\AppUserModelId\<appId>` 注册项并重启 explorer 后仍为耳机图标**，说明安装包自足、不依赖任何手工注册表步骤；最小化与「显示桌面」后窗口仍留在任务栏；卸载后安装目录、开始菜单快捷方式、卸载注册项全部清除，`%APPDATA%\huawei-music-desktop` 用户数据按 `deleteAppDataOnUninstall: false` 保留。
+- `scripts/check-windows-installer.mjs` 的图标校验改为读 `build.win.icon` 指向的 `build/icon.ico`，并断言其 256px 帧逐字节出现在打包 exe 内。原实现依赖 electron-builder 在输出目录旁留下的 `.icon-ico/icon.ico`，而 electron-builder 26 不再产出该目录，闸门在 Windows 上会直接 ENOENT。该产物上重跑通过：16/24/32/48/64/128/256 七档、品牌色覆盖 0.858、字形 0.136。
 
 ## 2026-10-28 Windows 日用功能收口
 
@@ -20,7 +36,7 @@
 | M3 播放器日用能力 | in-progress | 单 Audio、顺序/随机/循环、音量/seek、音质选择、歌词高亮/手动滚动暂停跟随、队列恢复不自动播放。本轮补全歌词：解析词级 `<mm:ss.xx>` 逐字时间、同时间戳双语合并为翻译行、忽略 `[ti:][ar:]` 等元数据、主进程按曲缓存 LRC 结果；新增沉浸歌词页（点击行跳转、进度拖动、±0.5s 偏移按曲记忆、滚轮暂停跟随、Esc 退出）。设置同步、媒体键旧闭包与初始化队列竞态已修。965 首队列真实磁盘读回完整且无播放 URL。真实 CDN/听播、过期资源和睡眠恢复仍未验收。 |
 | M4 受控写操作 | in-progress | 主进程串行写，收藏幂等读回；简介/删除先确认当前账号 owned，再读回核对。创建保留本次基线与未决意图，超时不重发，进程重启仍阻止盲目重复创建。生产业务集成测试使用合成响应通过。历史真实接口写验证及 added=0/removed=0 证据仍有效；**新桌面写路径没有当前授权下的真实写验收**。 |
 | M5 视觉与系统集成 | in-progress | 视觉整体重做：浮起玻璃面板、窄侧栏、无边框内容、独立播放坞；配色与图标体系自定（暖白中性色 + 默认华为红）。CSS 变量化设计系统，960/1100 两档响应式。设置改为二级分类（播放/外观/关于），外观可调主题色、面板透明度、圆角、字号、字体，写入设置并实时生效。沉浸歌词改为左侧封面 + 右侧居中歌词。Linux Electron 实际截图覆盖 1180×760、960×640、歌词抽屉与沉浸歌词页、队列抽屉、965 首长列表。**新视觉未经用户最终确认，不宣称定稿**。托盘/关闭/媒体键有代码，物理媒体键、无托盘桌面及睡眠恢复仍待验。 |
-| M6 发行工程 | in-progress | Linux x64 AppImage 已构建；从实际 AppImage 提取二进制并启动隔离 profile，核对打包文件与当前 out 一致、renderer 无 Node、设置可保存，全部通过。Windows 目标已按要求改为 **NSIS 安装包**，单文件 portable 构建入口、校验脚本与 CI 工作流已删除（`dist:win:portable`、`test:windows-portable`、`windows-portable.yml`）。安装包只能在原生 Windows 上构建，本机 Linux 不产出；CI（`windows-installer.yml`）已切到 `dist:win` + `test:windows-installer`，**尚未在 Windows runner 上实跑，安装/启动/播放均未验收**。macOS arm64/x64 DMG 入口保留。deb 等待真实主页/维护者身份，不编造。 |
+| M6 发行工程 | in-progress | Linux x64 AppImage 已构建；从实际 AppImage 提取二进制并启动隔离 profile，核对打包文件与当前 out 一致、renderer 无 Node、设置可保存，全部通过。Windows 目标已按要求改为 **NSIS 安装包**，单文件 portable 构建入口、校验脚本与 CI 工作流已删除（`dist:win:portable`、`test:windows-portable`、`windows-portable.yml`）。安装包只能在原生 Windows 上构建（`scripts/build-desktop.mjs` 会拒绝跨平台调用）；本机 Windows 已产出 `release/win-x64/huawei-music-desktop-0.0.1-win-x64-setup-internal.exe` 并完成安装/启动/卸载实机验收（见 2026-10-30 节），CI（`windows-installer.yml`）已切到 `dist:win` + `test:windows-installer`，但**尚未在 Windows runner 上实跑**；真实账号下的播放仍未验收。macOS arm64/x64 DMG 入口保留。deb 等待真实主页/维护者身份，不编造。 |
 
 ## UI 重做与歌词能力（2026-10-18）
 

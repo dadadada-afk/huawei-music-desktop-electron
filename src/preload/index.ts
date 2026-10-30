@@ -90,6 +90,7 @@ const api: DesktopApi = {
       return () => ipcRenderer.removeListener(channels.playerSeek, wrapped);
     },
     toggleAux: kind => ipcRenderer.invoke(channels.windowToggleAux, { kind }),
+    auxState: () => ipcRenderer.invoke(channels.windowAuxQuery),
     setAuxPinned: (kind, pinned) => ipcRenderer.invoke(channels.windowPinAux, { kind, pinned }),
     onAuxState: listener => {
       const wrapped = (_event: Electron.IpcRendererEvent, state: { kind: AuxWindowKind; open: boolean }) => listener(state);

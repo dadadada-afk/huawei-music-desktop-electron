@@ -305,6 +305,9 @@ export type DesktopApi = {
     onSeek(listener: (seconds: number) => void): () => void;
     /** Opens or closes the given helper window; resolves to whether it is now open. */
     toggleAux(kind: AuxWindowKind): Promise<boolean>;
+    /** Main window only: the helper windows can already be open from a previous session, so the
+     * initial state is read on mount instead of being assumed closed. */
+    auxState(): Promise<{ mini: boolean; lyrics: boolean }>;
     /** Pins or unpins a helper window above other apps; resolves to the state that took effect. */
     setAuxPinned(kind: AuxWindowKind, pinned: boolean): Promise<boolean>;
     /** Main window only: the helper windows can also be opened from the tray, so their state is pushed. */

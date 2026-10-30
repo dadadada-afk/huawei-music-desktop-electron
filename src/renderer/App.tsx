@@ -888,6 +888,16 @@ export function App() {
     }
   }
 
+  // The overlay can already be open because it was on when the app last closed, so the initial state
+  // is asked for once rather than assumed to be closed.
+  useEffect(() => {
+    let cancelled = false;
+    window.desktop.player.auxState()
+      .then(state => { if (!cancelled) setAuxOpen(state); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   // The tray menu can open a helper window without this component asking, so the open state is
   // pushed from the main process instead of being tracked only from local clicks.
   useEffect(() => window.desktop.player.onAuxState(state => {

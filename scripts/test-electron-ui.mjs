@@ -364,7 +364,7 @@ try {
   // Re-selecting the current option fires no change event, so move away first when already on tray.
   // The dropdown's own option text is the only user-visible confirmation, so the assertion that the
   // change really landed is the stored JSON read below rather than a sentence on the page.
-  const behavior = page.getByRole('combobox', { name: '关闭或最小化窗口时行为' });
+  const behavior = page.getByRole('combobox', { name: '关闭窗口时行为' });
   if (await behavior.inputValue() === 'tray') await behavior.selectOption('quit');
   await behavior.selectOption('tray');
   await page.waitForTimeout(400);

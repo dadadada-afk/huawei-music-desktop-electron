@@ -581,8 +581,8 @@ export function SettingsPage({ ctx }: { ctx: LibraryContext }) {  const settings
     <div className="settings-panel">
       {tab === 'playback' && <div className="settings-form">
         <label>
-          <span>关闭或最小化窗口时</span>
-          <select aria-label="关闭或最小化窗口时行为" value={settings?.closeBehavior ?? 'quit'} onChange={event => ctx.setCloseBehavior(event.target.value as AppSettings['closeBehavior'])}>
+          <span>关闭窗口时</span>
+          <select aria-label="关闭窗口时行为" value={settings?.closeBehavior ?? 'quit'} onChange={event => ctx.setCloseBehavior(event.target.value as AppSettings['closeBehavior'])}>
             <option value="quit">退出程序</option>
             <option value="tray">收进托盘，点托盘图标恢复</option>
           </select>
