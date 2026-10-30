@@ -177,6 +177,9 @@ async function createWindow(): Promise<void> {
       },
       onCommand: command => sendPlayerCommand(command),
       onSeek: seconds => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channels.playerSeek, seconds); },
+      // The overlay nudges the offset; the main window owns the value, its per-track memory and the
+      // broadcast that keeps the stage and the overlay on the same line.
+      onLyricOffset: delta => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channels.playerLyricOffset, delta); },
       onToggleAux: kind => toggleAuxWindow(kind),
       onPinAux: (kind, pinned) => pinAuxWindow(kind, pinned),
       onShowMain: showMainWindow,

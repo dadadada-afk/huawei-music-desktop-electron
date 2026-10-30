@@ -55,6 +55,10 @@ export function LyricsWindow() {
     void window.desktop.player.setLyricsAppearance(patch);
   };
   const resize = (delta: number) => apply({ fontSize: look.fontSize + delta });
+  // The main window owns the correction — it has to fold it into the snapshot every window reads —
+  // so the overlay only sends the nudge and displays whatever value comes back.
+  const offsetSeconds = state?.lyricOffset ?? 0;
+  const nudge = (delta: number) => window.desktop.player.adjustLyricOffset(delta);
   const command = (value: 'play-pause' | 'next' | 'previous' | 'toggle-favorite') =>
     window.desktop.player.control(value);
   // data-align / data-transition drive the layout and the entrance animation from CSS, so switching
@@ -69,6 +73,14 @@ export function LyricsWindow() {
       <span className="dlyric-track">{state?.title || '桌面歌词'}</span>
       <button aria-label="缩小歌词字号" title="缩小字号" onClick={() => resize(-2)}><Minus size={13} /></button>
       <button aria-label="放大歌词字号" title="放大字号" onClick={() => resize(2)}><Plus size={13} /></button>
+      {/* The offset adjustment belongs next to the words it moves: reading the overlay is when a
+          listener notices the lyric is early or late, and going back to the main window to fix it
+          means losing the line you were watching. */}
+      <span className="dlyric-offset" title="歌词提前 / 延后（按曲目记住）">
+        <button aria-label="歌词延后" onClick={() => nudge(-0.5)}>−</button>
+        <em>{(offsetSeconds > 0 ? '+' : '') + offsetSeconds.toFixed(1)}s</em>
+        <button aria-label="歌词提前" onClick={() => nudge(0.5)}>+</button>
+      </span>
       <input className="dlyric-opacity" type="range" min="0.3" max="1" step="0.05"
         aria-label="桌面歌词透明度" title={`透明度 ${Math.round(look.opacity * 100)}%`}
         value={look.opacity}

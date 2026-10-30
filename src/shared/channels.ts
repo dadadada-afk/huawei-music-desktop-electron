@@ -52,6 +52,9 @@ export const channels = {
   playerControl: 'player:control',
   playerRequestState: 'player:request-state',
   playerSeek: 'player:seek',
+  // The overlay nudges the offset from where the lyric is actually read: same relay shape as a seek
+  // (helper -> main -> main window, which owns the value and the per-track memory).
+  playerLyricOffset: 'player:lyric-offset',
   windowToggleAux: 'window:toggle-aux',
   windowPinAux: 'window:pin-aux',
   windowAuxState: 'window:aux-state',

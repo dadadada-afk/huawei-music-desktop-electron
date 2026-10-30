@@ -306,6 +306,12 @@ body:has(.mini) #root, body:has(.dlyric) #root { background: transparent; height
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* Offset nudge: two arrows around the current correction, sized to sit in the bar without taking
+   the track title's room. Tabular digits keep the bar from twitching as the value changes. */
+.dlyric-offset { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; opacity: 0.85; }
+.dlyric-offset em { font-style: normal; min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
+.dlyric-offset button { padding: 0 4px; }
+
 /* Each line is remounted (React key) when the sung line changes, so one short animation gives the
    overlay the vertical "roll" a lyric list has, without a scrolling container to keep in sync. */
 @keyframes dlyric-roll {

@@ -309,6 +309,10 @@ export type DesktopApi = {
     seek(seconds: number): void;
     /** Main window only: a seek request forwarded from a helper window. */
     onSeek(listener: (seconds: number) => void): () => void;
+    /** Helper windows: nudge the lyric offset; the main window applies and remembers it per track. */
+    adjustLyricOffset(delta: number): void;
+    /** Main window only: an offset nudge forwarded from a helper window. */
+    onLyricOffset(listener: (delta: number) => void): () => void;
     /** Opens or closes the given helper window; resolves to whether it is now open. */
     toggleAux(kind: AuxWindowKind): Promise<boolean>;
     /** Main window only: the helper windows can already be open from a previous session, so the

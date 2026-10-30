@@ -46,7 +46,10 @@ const NAV_ICONS = {
 const HISTORY_KEY = 'local-play-history';
 const HISTORY_LIMIT = 200;
 const LYRIC_OFFSET_KEY = 'lyric-offset';
-const LYRIC_OFFSET_LIMIT = 10;
+// A whole song can be half a minute out when the lyric sheet came from a different master than the
+// recording we stream, so the range has to be wide enough to fix that. The step grows with the
+// correction instead of the range shrinking (see changeLyricOffset).
+const LYRIC_OFFSET_LIMIT = 60;
 
 function readLyricOffset(trackId?: string): number {
   try {
@@ -622,7 +625,11 @@ export function App() {
 
   // Offset is a per-track preference; the shared value seeds the next unheard track.
   function changeLyricOffset(delta: number) {
-    const next = Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, Math.round((lyricOffset + delta) * 10) / 10));
+    // Half-second nudges for fine tuning, two-second strides once the correction is already large:
+    // a lyric sheet twenty seconds out would otherwise take forty clicks to line up.
+    const step = Math.abs(lyricOffset) >= 10 ? 2 : 0.5;
+    const moved = lyricOffset + Math.sign(delta) * step;
+    const next = Math.max(-LYRIC_OFFSET_LIMIT, Math.min(LYRIC_OFFSET_LIMIT, Math.round(moved * 10) / 10));
     setLyricOffset(next);
     try {
       const trackId = currentTrack?.id;
@@ -903,6 +910,11 @@ export function App() {
   useEffect(() => window.desktop.player.onAuxState(state => {
     setAuxOpen(current => (current[state.kind] === state.open ? current : { ...current, [state.kind]: state.open }));
   }), []);
+
+  // The overlay carries its own − / + because that is where the lyric is actually read, but the
+  // correction lives here: one state, one per-track memory, one broadcast that keeps every window
+  // showing the same row.
+  useEffect(() => window.desktop.player.onLyricOffset(delta => changeLyricOffset(delta)), [lyricOffset]);
 
   // The helper windows are pure mirrors: the main window is the only publisher, and it publishes on
   // every state change and time update, so the receivers never poll.

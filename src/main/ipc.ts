@@ -21,6 +21,8 @@ export function registerIpc(
     onSnapshot?: (state: PlayerSnapshot) => void;
     onCommand?: (command: PlayerCommand) => void;
     onSeek?: (seconds: number) => void;
+    /** Forwards an offset nudge from a helper window to the main window, which owns the value. */
+    onLyricOffset?: (delta: number) => void;
     onToggleAux?: (kind: AuxWindowKind) => boolean;
     onAuxQuery?: () => { mini: boolean; lyrics: boolean };
     /** Pins or unpins a helper window; returns the state that took effect. */
@@ -339,6 +341,13 @@ export function registerIpc(
     if (fromWindow(event) !== 'aux') return;
     if (typeof input !== 'number' || !Number.isFinite(input) || input < 0 || input > 24 * 3600) return;
     hooks.onSeek?.(input);
+  });
+  ipcMain.on(channels.playerLyricOffset, (event, input: unknown) => {
+    if (fromWindow(event) !== 'aux') return;
+    // A nudge, not a value: bounding the step stops a malformed renderer from jumping a lyric that
+    // is a few seconds off by minutes in one message.
+    if (typeof input !== 'number' || !Number.isFinite(input) || Math.abs(input) > 5) return;
+    hooks.onLyricOffset?.(input);
   });
   ipcMain.handle(channels.windowToggleAux, async (event, input: { kind?: string } = {}) => {
     if (!isAllowedSender(window, event) && fromWindow(event as unknown as Electron.IpcMainEvent) !== 'aux') throw new Error('IPC 来源不受信任');
