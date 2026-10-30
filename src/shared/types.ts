@@ -200,6 +200,12 @@ export type PlayerSnapshot = {
    */
   lyrics: SnapshotLyricLine[];
   lyricIndex: number;
+  /**
+   * Seconds the display shifts the lyric against the audio, as dialled in on the stage. It has to
+   * travel with the snapshot because the helper windows carry no offset control of their own:
+   * without it they keep showing the uncorrected line while the stage shows the corrected one.
+   */
+  lyricOffset: number;
   /** Whether the current track is in the user's favourites, so the overlay's heart is honest. */
   favorited: boolean;
 };

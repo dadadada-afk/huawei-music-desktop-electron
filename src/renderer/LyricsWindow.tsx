@@ -41,7 +41,9 @@ export function LyricsWindow() {
   const start = lines[index]?.timeMs ?? null;
   const following = lines[index + 1]?.timeMs ?? null;
   const bounds = { start, end: following ?? (start === null ? 0 : start + 4000) };
-  const positionMs = (state?.position ?? 0) * 1000;
+  // The stage's correction arrives with the snapshot. Filling against the raw position is what made
+  // the overlay run at its own speed whenever the user dialled one in on the stage.
+  const positionMs = ((state?.position ?? 0) + (state?.lyricOffset ?? 0)) * 1000;
   const fills = current && bounds.start !== null
     ? lineFill(current, bounds.start, bounds.end, positionMs)
     : [];

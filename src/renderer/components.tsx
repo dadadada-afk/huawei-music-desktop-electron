@@ -617,9 +617,12 @@ export function LyricsStage({
           <Minimize2 size={13} />{following ? '跟随中' : '已暂停'}
         </button>
         <div className="stage-tool" style={{ gap: 2 }}>
-          <button aria-label="歌词提前" onClick={() => onOffset(-0.5)} disabled={!doc?.synced}>−</button>
+          {/* A larger offset matches the position against a later moment, which shows the lyric
+              earlier: the plus button is the one that pulls it forward. The labels read the
+              opposite way until now, so the two controls did the reverse of what they promised. */}
+          <button aria-label="歌词延后" onClick={() => onOffset(-0.5)} disabled={!doc?.synced}>−</button>
           <span className="offset">{(offsetSeconds > 0 ? '+' : '') + offsetSeconds.toFixed(1)}s</span>
-          <button aria-label="歌词延后" onClick={() => onOffset(0.5)} disabled={!doc?.synced}>+</button>
+          <button aria-label="歌词提前" onClick={() => onOffset(0.5)} disabled={!doc?.synced}>+</button>
         </div>
         <ShareCardButton track={track} doc={doc} positionSeconds={positionSeconds} offsetSeconds={offsetSeconds} />
       </div>

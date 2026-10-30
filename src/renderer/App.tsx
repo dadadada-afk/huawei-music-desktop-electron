@@ -908,7 +908,11 @@ export function App() {
   // every state change and time update, so the receivers never poll.
   useEffect(() => {
     const lines = lyrics?.lines ?? [];
-    const active = lyrics?.synced && lines.length ? activeLyricIndex(lines, position * 1000) : -1;
+    // The correction dialled in on the stage is applied here, once, for every receiver: the helper
+    // windows pick their active line from this index, so correcting it here is what keeps the
+    // overlay, the mini strip and the stage on the same row.
+    const corrected = position + lyricOffset;
+    const active = lyrics?.synced && lines.length ? activeLyricIndex(lines, corrected * 1000) : -1;
     window.desktop.player.broadcast({
       title: currentTrack?.title ?? '',
       artists: currentTrack?.artists.map(artist => artist.name).join(' / ') ?? '',
@@ -921,9 +925,10 @@ export function App() {
         ...(line.segments ? { segments: line.segments } : {}),
       })),
       lyricIndex: typeof active === 'number' ? active : -1,
+      lyricOffset,
       favorited: currentTrack ? favoriteOf(currentTrack.id) === true : false,
     });
-  }, [currentTrack, playing, position, duration, lyrics, favoriteIds]);
+  }, [currentTrack, playing, position, duration, lyrics, favoriteIds, lyricOffset]);
 
   // Both insertion helpers keep `order` a permutation of queue indexes: shifting every later entry
   // by one is what keeps the currently playing track playing instead of jumping elsewhere.

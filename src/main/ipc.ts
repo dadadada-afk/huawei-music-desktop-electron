@@ -397,6 +397,9 @@ function sanitizeSnapshot(input: unknown): PlayerSnapshot | null {
   const value = input as Record<string, unknown>;
   const text = (item: unknown, max: number) => (typeof item === 'string' ? item.slice(0, max) : '');
   const seconds = (item: unknown) => (typeof item === 'number' && Number.isFinite(item) && item >= 0 && item <= 24 * 3600 ? item : 0);
+  // Signed on purpose: the offset exists to pull the lyric forward or push it back, and the stage
+  // already bounds it to ten seconds, so this only has to bound a hostile payload.
+  const offset = (item: unknown) => (typeof item === 'number' && Number.isFinite(item) ? Math.max(-60, Math.min(60, item)) : 0);
   // Bounded here because this payload crosses three windows: word marks travel with the line so the
   // overlay can fill it syllable by syllable, and a hostile renderer must not be able to push
   // megabytes through the broadcast channel.
@@ -434,6 +437,7 @@ function sanitizeSnapshot(input: unknown): PlayerSnapshot | null {
     duration: seconds(value.duration),
     lyrics,
     lyricIndex: lyricIndex >= -1 && lyricIndex < lyrics.length ? lyricIndex : -1,
+    lyricOffset: offset(value.lyricOffset),
     favorited: value.favorited === true,
   };
 }

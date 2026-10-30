@@ -428,11 +428,15 @@ try {
     const result = await window.desktop.settings.get();
     return result.ok && result.data.lyricsAlign === 'left' && result.data.lyricsTransition === 'fade';
   });
-  assert.deepEqual(
-    [JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8')).data.lyricsAlign,
-      JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8')).data.lyricsTransition],
-    ['left', 'fade']);
-  await page.getByRole('button', { name: '居中', exact: true }).click();
+  // The overlay settings are written by the main process after the IPC call has already answered,
+  // so the file is polled: a single read raced the write and failed on a slower disk.
+  let storedLyrics = null;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    storedLyrics = JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8')).data;
+    if (storedLyrics.lyricsAlign === 'left' && storedLyrics.lyricsTransition === 'fade') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.deepEqual([storedLyrics?.lyricsAlign, storedLyrics?.lyricsTransition], ['left', 'fade']);  await page.getByRole('button', { name: '居中', exact: true }).click();
   await page.getByRole('button', { name: '滚动', exact: true }).click();
   await page.waitForFunction(async () => {
     const result = await window.desktop.settings.get();
