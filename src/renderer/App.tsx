@@ -628,7 +628,7 @@ export function App() {
   // The stage and the overlay therefore offer this as a suggestion the user accepts, never apply it.
   const suggestedOffset = suggestedLyricOffset(duration, lyrics?.matchedDurationSeconds);
 
-  // Offset is a per-track preference; the shared value seeds the next unheard track.
+  // A per-track preference only: correcting one song must not follow the listener to the next one.
   function changeLyricOffset(delta: number) {
     // Half-second nudges for fine tuning, two-second strides once the correction is already large:
     // a lyric sheet twenty seconds out would otherwise take forty clicks to line up.
